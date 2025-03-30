@@ -1,9 +1,8 @@
-import path from "path";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
-// Adjust path to point to your actual buyTix.js logic
-const buyTix = require("../../../moonticket-jackpot/scripts/buyTix");
+// Vercel-compatible require path
+const buyTix = require("../../lib/buyTix").default || require("../../lib/buyTix");
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
