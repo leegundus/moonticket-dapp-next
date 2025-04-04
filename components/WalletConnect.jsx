@@ -9,8 +9,8 @@ const WalletMultiButton = dynamic(
 
 const WalletConnect = () => {
   return (
-    <div style={{ margin: "1rem 0" }}>
-      <WalletMultiButton />
+    <div className="my-2">
+      <WalletMultiButton className="bg-yellow-400 text-black font-semibold px-4 py-2 rounded hover:bg-yellow-300 transition" />
     </div>
   );
 };

@@ -1,7 +1,6 @@
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
-// Vercel-compatible require path
 const buyTix = require("../../lib/buyTix").default || require("../../lib/buyTix");
 
 export default async function handler(req, res) {
@@ -17,9 +16,13 @@ export default async function handler(req, res) {
 
   try {
     const result = await buyTix(walletAddress, solAmount);
-    res.status(200).json(result);
+
+    return res.status(200).json({
+      success: true,
+      ...result,
+    });
   } catch (err) {
     console.error("BuyTix API error:", err);
-    res.status(500).json({ error: err.message || "Internal Server Error" });
+    return res.status(500).json({ error: err.message || "Internal Server Error" });
   }
 }

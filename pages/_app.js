@@ -1,13 +1,14 @@
-import "@/styles/globals.css";
-import dynamic from "next/dynamic";
+import "../styles/globals.css";
+import WalletProvider from "../wallet/WalletProvider";
 import Navbar from "../components/Navbar";
-import dynamicWalletProvider from "../wallet/WalletProvider";
 
-export default function App({ Component, pageProps }) {
-  return dynamicWalletProvider(
+function MyApp({ Component, pageProps }) {
+  return WalletProvider(
     <>
       <Navbar />
       <Component {...pageProps} />
     </>
   );
 }
+
+export default MyApp;

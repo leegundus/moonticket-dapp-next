@@ -1,4 +1,8 @@
-:root {
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* :root {
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -22,7 +26,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
+} 
 
 * {
   box-sizing: border-box;
@@ -40,3 +44,4 @@ a {
     color-scheme: dark;
   }
 }
+*/

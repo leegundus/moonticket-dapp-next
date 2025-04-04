@@ -1,105 +1,48 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import useBalances from "../hooks/useBalances";
+import useJackpotData from "../hooks/useJackpotData";
+import useCountdown from "../hooks/useCountdown";
+import useEntries from "../hooks/useEntries";
 
 export default function Jackpot() {
   const { publicKey } = useWallet();
-  const { solBalance, tixBalanceRaw, tixBalance } = useBalances();
-  const [hodlInfo, setHodlInfo] = useState(null);
+  const { solBalance, tixBalance } = useBalances();
+  const jackpot = useJackpotData();
+  const { moonCountdown, nextMoonDrawDate } = useCountdown();
 
-  useEffect(() => {
-    console.log("Running useEffect...");
-    console.log("publicKey:", publicKey?.toString());
-    console.log("tixBalanceRaw:", tixBalanceRaw);
+  const entryData = useEntries(publicKey);
+  const weeklyTix = entryData?.weeklyTix || 0;
+  const usdSpent = entryData?.weeklyUsd || 0;
+  const entries = entryData?.weeklyEntries || 0;
 
-    if (!publicKey || !tixBalanceRaw) {
-      console.log("Missing publicKey or tixBalanceRaw. Skipping fetch.");
-      return;
-    }
-
-    const fetchHodlInfo = async () => {
-      try {
-        const res = await fetch("/api/userHodlInfo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            walletAddress: publicKey.toString(),
-            tixBalanceRaw,
-          }),
-        });
-        const data = await res.json();
-        console.log("HODL info response:", data);
-        setHodlInfo(data);
-      } catch (err) {
-        console.error("Error fetching HODL info:", err);
-      }
-    };
-
-    fetchHodlInfo();
-  }, [publicKey, tixBalanceRaw]);
+  const jackpotSol = jackpot?.moonJackpotSol || 0;
+  const jackpotUsd = jackpotSol * 180;
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Moonticket Jackpot</h1>
+    <div className="bg-black text-yellow-400 min-h-screen p-6">
+      <h1 className="text-2xl font-bold mb-4">Moonticket Jackpot</h1>
       <p><strong>SOL Balance:</strong> {Number(solBalance)?.toFixed(4)} SOL</p>
       <p><strong>$TIX Balance:</strong> {tixBalance?.toLocaleString()} $TIX</p>
 
-      <hr />
+      <hr className="my-4 border-yellow-400" />
 
-      <h2>Upcoming Jackpots</h2>
+      <h2 className="text-xl font-semibold mb-2">Next Moon Draw (Weekly)</h2>
+      <p><strong>Next Draw:</strong> {nextMoonDrawDate}</p>
+      <p><strong>Countdown:</strong> {moonCountdown}</p>
+      <p><strong>Jackpot:</strong> {jackpotSol.toFixed(4)} SOL (~${jackpotUsd.toFixed(2)} USD)</p>
 
-      <h3>Moon Draw (Weekly)</h3>
-      <p>Next Draw: Saturday @ Midnight UTC</p>
-      <p>Jackpot: 100 SOL (~$18,000)</p>
+      <hr className="my-4 border-yellow-400" />
 
-      {!hodlInfo ? (
-        <p>Loading HODL info...</p>
-      ) : (
+      {publicKey ? (
         <>
-          <p>
-            <strong>Required HODL:</strong>{" "}
-            {hodlInfo.requiredWeeklyHodl.toLocaleString()} $TIX
-          </p>
-          <p>
-            <strong>Purchased this week:</strong>{" "}
-            {hodlInfo.weeklyPurchased.toLocaleString()} $TIX
-          </p>
-          <p style={{ color: hodlInfo.eligibleForMoon ? "green" : "red" }}>
-            {hodlInfo.eligibleForMoon ? "✓ Eligible" : "✗ Ineligible"}
-          </p>
-          <p>
-            <strong>Entries this week:</strong>{" "}
-            {hodlInfo.weeklyEntries.toLocaleString()}
-          </p>
+          <h3 className="text-lg font-semibold mb-2">Your Weekly Entries</h3>
+          <p><strong>$TIX Purchased:</strong> {weeklyTix.toLocaleString()} $TIX</p>
+          <p><strong>USD Spent:</strong> ${usdSpent.toFixed(2)}</p>
+          <p><strong>Your Entries:</strong> {entries.toLocaleString()}</p>
         </>
-      )}
-
-      <br />
-
-      <h3>Mega Moon Draw (Monthly)</h3>
-      <p>Next Draw: Every 4th Saturday</p>
-      <p>Jackpot: 250 SOL (~$45,000)</p>
-
-      {!hodlInfo ? (
-        <p>Loading HODL info...</p>
       ) : (
-        <>
-          <p>
-            <strong>Required HODL (Mega):</strong>{" "}
-            {hodlInfo.requiredMonthlyHodl.toLocaleString()} $TIX
-          </p>
-          <p>
-            <strong>Purchased this period:</strong>{" "}
-            {hodlInfo.monthlyPurchased.toLocaleString()} $TIX
-          </p>
-          <p style={{ color: hodlInfo.eligibleForMega ? "green" : "red" }}>
-            {hodlInfo.eligibleForMega ? "✓ Eligible" : "✗ Ineligible"}
-          </p>
-          <p>
-            <strong>Entries this period:</strong>{" "}
-            {hodlInfo.monthlyEntries.toLocaleString()}
-          </p>
-        </>
+        <p>Connect wallet to see your entries.</p>
       )}
     </div>
   );

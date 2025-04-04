@@ -8,13 +8,14 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 require("@solana/wallet-adapter-react-ui/styles.css");
 
 const endpoint = "https://api.devnet.solana.com";
-const wallets = [new PhantomWalletAdapter()];
 
 const dynamicWalletProvider = (component) => {
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
-        <WalletModalProvider>{component}</WalletModalProvider>
+      <WalletProvider wallets={[new PhantomWalletAdapter()]} autoConnect>
+        <WalletModalProvider>
+          {component}
+        </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
   );

@@ -3,10 +3,11 @@ import WalletConnect from "./WalletConnect";
 
 const Navbar = () => {
   return (
-    <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1rem", borderBottom: "1px solid #ccc" }}>
-      <div>
-        <Link href="/jackpot" style={{ marginRight: "20px" }}>Jackpot</Link>
+    <nav className="bg-black text-yellow-400 px-6 py-4 flex justify-between items-center border-b border-yellow-400">
+      <div className="space-x-6">
+        <Link href="/jackpot">Jackpot</Link>
         <Link href="/buytix">Buy $TIX</Link>
+        <Link href="/past-drawings">Past Drawings</Link>
       </div>
       <WalletConnect />
     </nav>
