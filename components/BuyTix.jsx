@@ -13,8 +13,8 @@ export default function BuyTix() {
   const [tixAmount, setTixAmount] = useState(0);
   const [entries, setEntries] = useState(0);
 
-  const JACKPOT_PDA = new PublicKey("3z32sBrwkKD7BUdPQJJ7FV5Mu9hHxK1YFgFPzMKdFuSk");
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
+  const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
 
   useEffect(() => {
     const fetchPrices = async () => {
@@ -52,19 +52,19 @@ export default function BuyTix() {
     try {
       const connection = new Connection("https://api.devnet.solana.com");
       const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
-      const treasuryLamports = Math.floor(totalLamports * 0.01);
-      const jackpotLamports = totalLamports - treasuryLamports;
+      const opsLamports = Math.floor(totalLamports * 0.01);
+      const treasuryLamports = totalLamports - opsLamports;
 
       const tx = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
-          toPubkey: JACKPOT_PDA,
-          lamports: jackpotLamports,
+          toPubkey: TREASURY_WALLET,
+          lamports: treasuryLamports,
         }),
         SystemProgram.transfer({
           fromPubkey: publicKey,
-          toPubkey: TREASURY_WALLET,
-          lamports: treasuryLamports,
+          toPubkey: OPS_WALLET,
+          lamports: opsLamports,
         })
       );
 

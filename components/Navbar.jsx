@@ -7,7 +7,7 @@ const Navbar = () => {
       <div className="space-x-6">
         <Link href="/jackpot">Jackpot</Link>
         <Link href="/buytix">Buy $TIX</Link>
-        <Link href="/past-drawings">Past Drawings</Link>
+        <Link href="/past">Past Drawings</Link>
       </div>
       <WalletConnect />
     </nav>

@@ -16,7 +16,7 @@ export default function Jackpot() {
   const usdSpent = entryData?.weeklyUsd || 0;
   const entries = entryData?.weeklyEntries || 0;
 
-  const jackpotSol = jackpot?.moonJackpotSol || 0;
+  const jackpotSol = jackpot?.jackpotSol || 0;
   const jackpotUsd = jackpotSol * 180;
 
   return (

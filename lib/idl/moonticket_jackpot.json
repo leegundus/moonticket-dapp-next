@@ -111,7 +111,7 @@
           }
         },
         {
-          "name": "ops"
+          "name": "treasury"
         },
         {
           "name": "user"
@@ -225,8 +225,8 @@
   "errors": [
     {
       "code": 6000,
-      "name": "InvalidOpsWallet",
-      "msg": "Invalid ops wallet address."
+      "name": "InvalidTreasuryWallet",
+      "msg": "Invalid treasury wallet address."
     }
   ],
   "types": [
@@ -235,38 +235,6 @@
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "total_weekly_entries",
-            "type": "u64"
-          },
-          {
-            "name": "total_monthly_entries",
-            "type": "u64"
-          },
-          {
-            "name": "last_moon_draw",
-            "type": "i64"
-          },
-          {
-            "name": "last_mega_moon_draw",
-            "type": "i64"
-          },
-          {
-            "name": "last_moon_winner",
-            "type": "pubkey"
-          },
-          {
-            "name": "last_mega_winner",
-            "type": "pubkey"
-          },
-          {
-            "name": "moon_rolled",
-            "type": "bool"
-          },
-          {
-            "name": "mega_rolled",
-            "type": "bool"
-          },
           {
             "name": "bump",
             "type": "u8"
@@ -279,14 +247,6 @@
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "weekly_entries",
-            "type": "u64"
-          },
-          {
-            "name": "monthly_entries",
-            "type": "u64"
-          },
           {
             "name": "tix_balance",
             "type": "u64"
