@@ -1,15 +1,36 @@
 import Link from "next/link";
-import WalletConnect from "./WalletConnect";
+import dynamic from "next/dynamic";
+
+const WalletMultiButton = dynamic(
+  () =>
+    import("@solana/wallet-adapter-react-ui").then(
+      (mod) => mod.WalletMultiButton
+    ),
+  { ssr: false }
+);
 
 const Navbar = () => {
   return (
     <nav className="bg-black text-yellow-400 px-6 py-4 flex justify-between items-center border-b border-yellow-400">
+      {/* Logo */}
+      <div className="w-32">
+        <Link href="/">
+          <img src="/moonticket-logo.png" alt="Moonticket Logo" className="w-full h-auto" />
+        </Link>
+      </div>
+
       <div className="space-x-6">
+        <Link href="/">Home</Link>
         <Link href="/jackpot">Jackpot</Link>
         <Link href="/buytix">Buy $TIX</Link>
-        <Link href="/past">Past Drawings</Link>
+        <Link href="/past">Winners</Link>
+        <Link href="/nfts">NFTs</Link>
+        <Link href="/burn">Burn to Earn</Link>
+        <Link href="/staking">Staking</Link>
+        <Link href="/whitepaper">Whitepaper</Link>
       </div>
-      <WalletConnect />
+
+      <WalletMultiButton className="!bg-yellow-400 !text-black !font-bold !px-4 !py-2 !rounded hover:!bg-yellow-500 transition" />
     </nav>
   );
 };

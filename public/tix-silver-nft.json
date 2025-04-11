@@ -1,0 +1,11 @@
+{
+  "name": "Moonticket Silver NFT",
+  "symbol": "SILVER",
+  "description": "Provides a +15% boost to your weekly jackpot entries as long as held.",
+  "image": "ipfs://bafybeibpimsx4wq7yngc6kjrowox2ynf5obrbs7xg6brsgiuecaxheyraq/silver-nft.png",
+  "properties": {
+    "boost": "+15%",
+    "stackable": true,
+    "utility": "jackpot entry multiplier"
+  }
+}

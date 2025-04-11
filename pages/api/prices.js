@@ -1,15 +1,29 @@
 // pages/api/prices.js
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const mockSolPrice = 115.56; // Replace with actual API call later if needed
-  const tixPriceUsd = 0.0001;
+  try {
+    const coingeckoRes = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd"
+    );
 
-  return res.status(200).json({
-    solPriceUsd: mockSolPrice,
-    tixPriceUsd,
-  });
+    if (!coingeckoRes.ok) {
+      throw new Error("Failed to fetch SOL price from CoinGecko");
+    }
+
+    const data = await coingeckoRes.json();
+    const solPriceUsd = data?.solana?.usd || 0;
+    const tixPriceUsd = 0.0001;
+
+    return res.status(200).json({
+      solPriceUsd,
+      tixPriceUsd,
+    });
+  } catch (err) {
+    console.error("Price API error:", err.message);
+    return res.status(500).json({ error: "Failed to fetch prices" });
+  }
 }

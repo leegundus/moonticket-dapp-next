@@ -1,71 +1,77 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-function getDrawWindowRange() {
+function getDrawWindowUTC() {
   const now = new Date();
 
-  const day = now.getUTCDay(); // Sunday = 0, Monday = 1
-  const hour = now.getUTCHours();
+  // Convert to Central Time (UTC-6)
+  const utcOffset = now.getTimezoneOffset(); // e.g. 300 minutes
+  const centralOffset = 6 * 60;
+  const diffMinutes = centralOffset - utcOffset;
+  const nowCentral = new Date(now.getTime() + diffMinutes * 60000);
 
-  // Calculate how many days since last Monday
-  let daysSinceMonday = (day + 6) % 7;
-  if (day === 1 && hour < 3) daysSinceMonday = 7; // Before Monday 10pm CT (3am UTC), go back a week
+  // Last Monday at 10pm CT
+  const day = nowCentral.getDay();
+  const diffToMonday = (day + 6) % 7;
+  const lastMonday = new Date(
+    nowCentral.getFullYear(),
+    nowCentral.getMonth(),
+    nowCentral.getDate() - diffToMonday,
+    22, 0, 0
+  );
 
-  const lastDraw = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate() - daysSinceMonday,
-    3, 0, 0 // 10pm CT == 3am UTC
-  ));
+  // If still Monday but before 10pm CT, go back one week
+  if (day === 1 && nowCentral.getHours() < 22) {
+    lastMonday.setDate(lastMonday.getDate() - 7);
+  }
 
-  const nextDraw = new Date(lastDraw.getTime() + 7 * 24 * 60 * 60 * 1000); // +7 days
+  const nextMonday = new Date(lastMonday.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  return { lastDraw, nextDraw };
+  return {
+    startISO: new Date(lastMonday.getTime() + utcOffset * 60000).toISOString(),
+    endISO: new Date(nextMonday.getTime() + utcOffset * 60000).toISOString(),
+  };
 }
 
 export default async function handler(req, res) {
-  const wallet = req.query.wallet;
+  const { wallet } = req.query;
 
   if (!wallet) {
-    return res.status(400).json({ error: 'Missing wallet address' });
+    return res.status(400).json({ error: "Missing wallet parameter" });
   }
 
-  try {
-    const { lastDraw, nextDraw } = getDrawWindowRange();
+  const { startISO, endISO } = getDrawWindowUTC();
 
+  try {
     const { data, error } = await supabase
-      .from('entries')
-      .select('*')
-      .eq('wallet', wallet)
-      .gte('created_at', lastDraw.toISOString())
-      .lt('created_at', nextDraw.toISOString());
+      .from("entries")
+      .select("*")
+      .eq("wallet", wallet)
+      .gte("created_at", startISO)
+      .lt("created_at", endISO);
 
     if (error) {
-      console.error('Supabase error:', error.message);
-      return res.status(500).json({ error: 'Failed to fetch user entries' });
+      console.error("Supabase query error:", error.message);
+      return res.status(500).json({ error: "Failed to fetch data" });
     }
 
     let weeklyTix = 0;
     let weeklyUsd = 0;
     let weeklyEntries = 0;
 
-    for (const row of data) {
-      weeklyTix += row.tix_amount;
-      weeklyUsd += row.amount_usd;
-      weeklyEntries += row.entries;
+    for (const entry of data) {
+      weeklyTix += entry.tix_amount;
+      weeklyUsd += entry.amount_usd;
+      weeklyEntries += entry.entries;
     }
 
-    return res.status(200).json({
-      weeklyTix,
-      weeklyUsd,
-      weeklyEntries
-    });
+    res.status(200).json({ weeklyTix, weeklyUsd, weeklyEntries });
   } catch (err) {
-    console.error('Handler error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error("API error:", err.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 }

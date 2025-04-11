@@ -1,0 +1,11 @@
+{
+  "name": "Moonticket Gold NFT",
+  "symbol": "GOLD",
+  "description": "Provides a +25% boost to your weekly jackpot entries as long as held.",
+  "image": "ipfs://bafybeibpimsx4wq7yngc6kjrowox2ynf5obrbs7xg6brsgiuecaxheyraq/gold-nft.png",
+  "properties": {
+    "boost": "+25%",
+    "stackable": true,
+    "utility": "jackpot entry multiplier"
+  }
+}

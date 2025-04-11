@@ -15,6 +15,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Fully rely on lib/buyTix.js to handle ATA creation (cleaner and consistent)
     const result = await buyTix(walletAddress, solAmount);
 
     return res.status(200).json({
@@ -23,6 +24,8 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("BuyTix API error:", err);
-    return res.status(500).json({ error: err.message || "Internal Server Error" });
+    return res.status(500).json({
+      error: err?.message || "Internal Server Error"
+    });
   }
 }
