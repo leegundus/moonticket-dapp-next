@@ -1,49 +1,52 @@
-import { useState } from "react";
 import Link from "next/link";
 import WalletConnect from "./WalletConnect";
+import { useState } from "react";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
 
-  const toggleMenu = () => setIsOpen(!isOpen);
-
   return (
-    <nav className="bg-black text-yellow-400 px-6 py-4 border-b border-yellow-400">
-      <div className="flex justify-between items-center">
-        {/* Logo */}
-        <div className="w-32">
-          <Link href="/">
-            <img src="/moonticket-logo.png" alt="Moonticket Logo" className="w-full h-auto" />
-          </Link>
-        </div>
-
-        {/* Mobile Menu Button */}
-        <div className="md:hidden">
-          <button onClick={toggleMenu} className="text-yellow-400 focus:outline-none text-2xl">
-            {isOpen ? "✕" : "☰"}
-          </button>
-        </div>
-
-        {/* Desktop Links */}
-        <div className="hidden md:flex space-x-6">
-          <Link href="/">Home</Link>
-          <Link href="/jackpot">Jackpot</Link>
-          <Link href="/buytix">Buy $TIX</Link>
-          <Link href="/past">Winners</Link>
-          <Link href="/nfts">NFTs</Link>
-          <Link href="/burn">Burn to Earn</Link>
-          <Link href="/staking">Staking</Link>
-          <Link href="/whitepaper">Whitepaper</Link>
-        </div>
-
-        <div className="hidden md:block">
-          <WalletConnect />
-        </div>
+    <nav className="bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400">
+      {/* Logo */}
+      <div className="w-32">
+        <Link href="/">
+          <img src="/moonticket-logo.png" alt="Moonticket Logo" className="w-full h-auto" />
+        </Link>
       </div>
 
-      {/* Mobile Dropdown */}
+      {/* Hamburger - Mobile */}
+      <div className="md:hidden">
+        <button onClick={() => setIsOpen(!isOpen)} className="focus:outline-none">
+          <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {isOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+      </div>
+
+      {/* Links - Desktop */}
+      <div className="hidden md:flex space-x-6">
+        <Link href="/">Home</Link>
+        <Link href="/jackpot">Jackpot</Link>
+        <Link href="/buytix">Buy $TIX</Link>
+        <Link href="/past">Winners</Link>
+        <Link href="/nfts">NFTs</Link>
+        <Link href="/burn">Burn to Earn</Link>
+        <Link href="/staking">Staking</Link>
+        <Link href="/whitepaper">Whitepaper</Link>
+      </div>
+
+      {/* WalletConnect */}
+      <div className="ml-4">
+        <WalletConnect />
+      </div>
+
+      {/* Dropdown - Mobile */}
       {isOpen && (
-        <div className="md:hidden mt-4 space-y-3 text-center">
+        <div className="absolute top-20 left-0 right-0 bg-black border-t border-yellow-400 flex flex-col items-center space-y-4 py-4 md:hidden z-50">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/jackpot" onClick={() => setIsOpen(false)}>Jackpot</Link>
           <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy $TIX</Link>
@@ -52,9 +55,6 @@ const Navbar = () => {
           <Link href="/burn" onClick={() => setIsOpen(false)}>Burn to Earn</Link>
           <Link href="/staking" onClick={() => setIsOpen(false)}>Staking</Link>
           <Link href="/whitepaper" onClick={() => setIsOpen(false)}>Whitepaper</Link>
-          <div className="pt-2">
-            <WalletConnect />
-          </div>
         </div>
       )}
     </nav>
