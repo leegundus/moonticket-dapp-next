@@ -6,15 +6,8 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <nav className="bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400">
-      {/* Logo */}
-      <div className="w-32">
-        <Link href="/">
-          <img src="/moonticket-logo.png" alt="Moonticket Logo" className="w-full h-auto" />
-        </Link>
-      </div>
-
-      {/* Hamburger - Mobile */}
+    <nav className="bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 relative">
+      {/* Hamburger - Mobile Left */}
       <div className="md:hidden">
         <button onClick={() => setIsOpen(!isOpen)} className="focus:outline-none">
           <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -27,8 +20,15 @@ const Navbar = () => {
         </button>
       </div>
 
+      {/* Logo - Center on Mobile, Left on Desktop */}
+      <div className="absolute left-1/2 transform -translate-x-1/2 md:static md:transform-none md:left-auto md:translate-x-0 w-32">
+        <Link href="/">
+          <img src="/moonticket-logo.png" alt="Moonticket Logo" className="w-full h-auto" />
+        </Link>
+      </div>
+
       {/* Links - Desktop */}
-      <div className="hidden md:flex space-x-6">
+      <div className="hidden md:flex space-x-6 ml-4">
         <Link href="/">Home</Link>
         <Link href="/jackpot">Jackpot</Link>
         <Link href="/buytix">Buy $TIX</Link>
@@ -39,8 +39,8 @@ const Navbar = () => {
         <Link href="/whitepaper">Whitepaper</Link>
       </div>
 
-      {/* WalletConnect */}
-      <div className="ml-4">
+      {/* WalletConnect - Right side always */}
+      <div className="ml-auto md:ml-4">
         <WalletConnect />
       </div>
 
