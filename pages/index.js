@@ -18,7 +18,7 @@ export default function Home() {
         <br /><br />
         The more people buy, the bigger the prize — and even if you don’t win, you still hold $TIX, which may have long-term potential once trading begins on a DEX.
         <br /><br />
-        To claim your free entry, click the <strong>'FREE TIX'</strong> button on the Jackpot page.
+        To claim your free entry, click the <strong>FREE TIX</strong> button on the Jackpot page.
       </p>
 
       {/* Buttons */}
