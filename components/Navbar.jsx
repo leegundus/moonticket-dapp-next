@@ -7,16 +7,16 @@ const Navbar = () => {
 
   return (
     <>
-      {/* Top Navbar (Always Fixed) */}
-      <nav className="fixed top-0 left-0 right-0 bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50">
-        {/* Logo - Left */}
+      {/* Top Navbar */}
+      <nav className={`bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50 ${isOpen ? 'fixed top-0 left-0 right-0' : ''}`}>
+        {/* Logo */}
         <div className="w-32">
           <Link href="/">
             <img src="/moonticket-logo.png" alt="Moonticket Logo" className="w-full h-auto" />
           </Link>
         </div>
 
-        {/* Desktop Links */}
+        {/* Desktop Nav */}
         <div className="hidden md:flex space-x-6">
           <Link href="/">Home</Link>
           <Link href="/jackpot">Jackpot</Link>
@@ -28,11 +28,9 @@ const Navbar = () => {
           <Link href="/whitepaper">Whitepaper</Link>
         </div>
 
-        {/* Right Side: Wallet + Hamburger */}
+        {/* Wallet + Hamburger */}
         <div className="flex items-center space-x-4">
           <WalletConnect />
-
-          {/* Hamburger (Mobile Only) */}
           <div className="md:hidden">
             <button onClick={() => setIsOpen(!isOpen)} className="focus:outline-none z-50 relative">
               <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -47,12 +45,12 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Spacer to push content below fixed nav */}
-      <div className="h-20 md:h-24" />
+      {/* Push page down only when not fixed */}
+      {!isOpen && <div className="h-20 md:h-24" />}
 
-      {/* Dropdown Menu - Mobile Only */}
+      {/* Mobile Menu */}
       {isOpen && (
-        <div className="fixed inset-0 pt-20 bg-black/90 backdrop-blur-sm flex flex-col items-center space-y-5 z-40 md:hidden">
+        <div className="fixed inset-0 pt-20 bg-black/90 backdrop-blur-sm flex flex-col items-center space-y-5 z-40 md:hidden overflow-y-auto">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/jackpot" onClick={() => setIsOpen(false)}>Jackpot</Link>
           <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy $TIX</Link>
