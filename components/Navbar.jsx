@@ -6,7 +6,7 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <nav className="bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 relative">
+    <nav className="bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 relative z-50">
       {/* Logo - Left */}
       <div className="w-32">
         <Link href="/">
@@ -32,7 +32,7 @@ const Navbar = () => {
 
         {/* Hamburger (Mobile Only) */}
         <div className="md:hidden">
-          <button onClick={() => setIsOpen(!isOpen)} className="focus:outline-none">
+          <button onClick={() => setIsOpen(!isOpen)} className="focus:outline-none z-50 relative">
             <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               {isOpen ? (
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -46,7 +46,7 @@ const Navbar = () => {
 
       {/* Dropdown - Mobile Only */}
       {isOpen && (
-        <div className="absolute top-20 left-0 right-0 bg-black border-t border-yellow-400 flex flex-col items-center space-y-4 py-4 md:hidden z-50">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-start pt-28 space-y-5 z-40 md:hidden">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/jackpot" onClick={() => setIsOpen(false)}>Jackpot</Link>
           <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy $TIX</Link>
