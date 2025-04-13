@@ -47,6 +47,7 @@ export default async function handler(req, res) {
   const { startISO, endISO } = getDrawWindowUTC();
 
   try {
+    // Fetch purchased entries
     const { data, error } = await supabase
       .from("entries")
       .select("*")
@@ -60,16 +61,34 @@ export default async function handler(req, res) {
     }
 
     let weeklyTix = 0;
-    let weeklyUsd = 0;
-    let weeklyEntries = 0;
+    let purchaseEntries = 0;
 
     for (const entry of data) {
       weeklyTix += entry.tix_amount;
-      weeklyUsd += entry.amount_usd;
-      weeklyEntries += entry.entries;
+      purchaseEntries += entry.entries;
     }
 
-    res.status(200).json({ weeklyTix, weeklyUsd, weeklyEntries });
+    // Count free tweet entries
+    const { count: tweetEntries, error: tweetError } = await supabase
+      .from("free_entries")
+      .select("*", { count: "exact", head: true })
+      .eq("wallet", wallet)
+      .gte("created_at", startISO)
+      .lt("created_at", endISO);
+
+    if (tweetError) {
+      console.error("Supabase tweet count error:", tweetError.message);
+      return res.status(500).json({ error: "Failed to fetch tweet entries" });
+    }
+
+    const weeklyEntries = purchaseEntries + tweetEntries;
+
+    res.status(200).json({
+      weeklyTix,
+      purchaseEntries,
+      tweetEntries,
+      weeklyEntries,
+    });
   } catch (err) {
     console.error("API error:", err.message);
     res.status(500).json({ error: "Internal Server Error" });

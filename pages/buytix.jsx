@@ -10,7 +10,7 @@ export default function BuyTixPage() {
     <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center pt-8">
       {/* Centered Logo at Top */}
       <img
-        src="/tix-coin.png"
+        src="/tix-coin-web.png"
         alt="$TIX Coin"
         className="w-40 md:w-52 lg:w-64 mb-6"
       />

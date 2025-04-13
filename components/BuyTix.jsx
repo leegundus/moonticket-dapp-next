@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
+import TweetEntryModal from "./TweetEntryModal";
 
 export default function BuyTix() {
   const { publicKey, signTransaction } = useWallet();
@@ -12,6 +13,7 @@ export default function BuyTix() {
   const [tixPriceUsd, setTixPriceUsd] = useState(0);
   const [tixAmount, setTixAmount] = useState(0);
   const [entries, setEntries] = useState(0);
+  const [showBonusModal, setShowBonusModal] = useState(false);
 
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
   const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
@@ -134,13 +136,31 @@ export default function BuyTix() {
       </button>
 
       {result && result.success && (
-        <div className="mt-4 text-green-400">
-          <p>Success! You bought {result.tixAmount.toLocaleString()} $TIX</p>
-          <p>using {result.solAmount} SOL (~${result.usdSpent.toFixed(2)} USD).</p>
-          <p>
-            Rate: ${result.tixPriceUsd?.toFixed(5)} per $TIX | SOL: ${result.solPriceUsd?.toFixed(2)}
-          </p>
-        </div>
+        <>
+          <div className="mt-4 text-green-400">
+            <p>Success! You bought {result.tixAmount.toLocaleString()} $TIX</p>
+            <p>using {result.solAmount} SOL (~${result.usdSpent.toFixed(2)} USD).</p>
+            <p>
+              Rate: ${result.tixPriceUsd?.toFixed(5)} per $TIX | SOL: ${result.solPriceUsd?.toFixed(2)}
+            </p>
+          </div>
+
+          <div className="mt-6 text-center">
+            <p className="text-white mb-2">Get 1 bonus entry by tweeting!</p>
+            <img
+              src="/freeTix-button.png"
+              alt="Claim Bonus Entry"
+              className="mx-auto cursor-pointer hover:scale-105 transition"
+              onClick={() => setShowBonusModal(true)}
+            />
+          </div>
+
+          <TweetEntryModal
+            isOpen={showBonusModal}
+            onClose={() => setShowBonusModal(false)}
+            isBonus={true}
+          />
+        </>
       )}
 
       {result && !result.success && (

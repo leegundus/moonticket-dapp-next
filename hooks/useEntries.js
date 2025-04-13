@@ -16,9 +16,7 @@ export default function useEntries(publicKey) {
     const fetchEntries = async () => {
       try {
         const res = await fetch(`/api/userEntries?wallet=${publicKey.toBase58()}`);
-
         const data = await res.json();
-        console.log("useEffect triggered with publicKey:", publicKey);
 
         if (!res.ok) {
           console.error("Error fetching entries:", data.error);
@@ -27,13 +25,15 @@ export default function useEntries(publicKey) {
 
         console.log("Supabase data received:", data);
 
-        // This matches exactly what your API returns
+        const purchaseEntries = data.weeklyEntries || 0;
+        const tweetEntries = data.tweetEntries || 0;
+
         setEntries({
           weeklyTix: data.weeklyTix,
-          weeklyUsd: data.weeklyUsd,
-          weeklyEntries: data.weeklyEntries,
+          purchaseEntries,
+          tweetEntries,
+          weeklyEntries: purchaseEntries + tweetEntries,
         });
-
       } catch (err) {
         console.error("Failed to load user entries:", err.message);
       }
