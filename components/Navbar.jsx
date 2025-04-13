@@ -1,14 +1,18 @@
 import Link from "next/link";
 import WalletConnect from "./WalletConnect";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
 
+  useEffect(() => {
+    document.body.style.overflow = isOpen ? "hidden" : "auto";
+  }, [isOpen]);
+
   return (
     <>
-      {/* Fixed Navbar */}
-      <nav className="fixed top-0 left-0 right-0 bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50">
+      {/* Top Navbar */}
+      <nav className={`w-full bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50 ${isOpen ? "fixed top-0 left-0 right-0" : "relative"}`}>
         {/* Logo */}
         <div className="w-32">
           <Link href="/">
@@ -45,12 +49,12 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Push page content below navbar */}
-      <div className="pt-20 md:pt-24" />
+      {/* Spacer below navbar (only when menu is closed) */}
+      {!isOpen && <div className="h-20 md:h-24" />}
 
-      {/* Fullscreen Mobile Dropdown */}
+      {/* Dropdown Overlay - Mobile Only */}
       {isOpen && (
-        <div className="fixed inset-0 top-0 bg-black/90 backdrop-blur-sm text-yellow-400 z-40 md:hidden flex flex-col items-center justify-center space-y-6 pt-24">
+        <div className="fixed inset-0 top-0 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center justify-center space-y-6 z-40 md:hidden pt-32">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/jackpot" onClick={() => setIsOpen(false)}>Jackpot</Link>
           <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy $TIX</Link>
