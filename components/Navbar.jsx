@@ -1,17 +1,9 @@
 import Link from "next/link";
 import WalletConnect from "./WalletConnect";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-
-  // Prevent body scroll when dropdown is open
-  useEffect(() => {
-    document.body.style.overflow = isOpen ? "hidden" : "auto";
-    return () => {
-      document.body.style.overflow = "auto";
-    };
-  }, [isOpen]);
 
   return (
     <>
@@ -53,12 +45,12 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Spacer below fixed navbar */}
+      {/* Spacer to push page content below the fixed navbar */}
       <div className="pt-20 md:pt-24" />
 
       {/* Mobile Dropdown */}
       {isOpen && (
-        <div className="fixed inset-0 top-20 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center justify-start space-y-6 py-8 z-40 md:hidden">
+        <div className="absolute top-20 left-0 right-0 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center space-y-6 py-6 z-40 md:hidden">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/jackpot" onClick={() => setIsOpen(false)}>Jackpot</Link>
           <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy $TIX</Link>
