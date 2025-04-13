@@ -1,18 +1,9 @@
 import Link from "next/link";
 import WalletConnect from "./WalletConnect";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-
-  // Lock scroll when dropdown is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "auto";
-    }
-  }, [isOpen]);
 
   return (
     <>
@@ -54,7 +45,7 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Push page content down below navbar */}
+      {/* Push page content below navbar */}
       <div className="pt-20 md:pt-24" />
 
       {/* Fullscreen Mobile Dropdown */}
