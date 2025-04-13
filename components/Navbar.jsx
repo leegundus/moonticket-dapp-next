@@ -5,18 +5,18 @@ import { useState, useEffect } from "react";
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Prevent background scroll when dropdown is open
+  // Lock scroll when dropdown is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = "";
+      document.body.style.overflow = "auto";
     }
   }, [isOpen]);
 
   return (
     <>
-      {/* Fixed Top Navbar */}
+      {/* Fixed Navbar */}
       <nav className="fixed top-0 left-0 right-0 bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50">
         {/* Logo */}
         <div className="w-32">
@@ -25,7 +25,7 @@ const Navbar = () => {
           </Link>
         </div>
 
-        {/* Desktop Nav Links */}
+        {/* Desktop Nav */}
         <div className="hidden md:flex space-x-6">
           <Link href="/">Home</Link>
           <Link href="/jackpot">Jackpot</Link>
@@ -54,12 +54,12 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Spacer below fixed nav */}
+      {/* Push page content down below navbar */}
       <div className="pt-20 md:pt-24" />
 
       {/* Fullscreen Mobile Dropdown */}
       {isOpen && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center justify-center space-y-6 z-40 md:hidden">
+        <div className="fixed inset-0 top-0 bg-black/90 backdrop-blur-sm text-yellow-400 z-40 md:hidden flex flex-col items-center justify-center space-y-6 pt-24">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/jackpot" onClick={() => setIsOpen(false)}>Jackpot</Link>
           <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy $TIX</Link>
