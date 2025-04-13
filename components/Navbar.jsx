@@ -7,28 +7,15 @@ const Navbar = () => {
 
   return (
     <nav className="bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 relative">
-      {/* Hamburger - Mobile Left */}
-      <div className="md:hidden">
-        <button onClick={() => setIsOpen(!isOpen)} className="focus:outline-none">
-          <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            {isOpen ? (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            )}
-          </svg>
-        </button>
-      </div>
-
-      {/* Logo - Center on Mobile, Left on Desktop */}
-      <div className="absolute left-1/2 transform -translate-x-1/2 md:static md:transform-none md:left-auto md:translate-x-0 w-32">
+      {/* Logo - Left */}
+      <div className="w-32">
         <Link href="/">
           <img src="/moonticket-logo.png" alt="Moonticket Logo" className="w-full h-auto" />
         </Link>
       </div>
 
-      {/* Links - Desktop */}
-      <div className="hidden md:flex space-x-6 ml-4">
+      {/* Desktop Links */}
+      <div className="hidden md:flex space-x-6">
         <Link href="/">Home</Link>
         <Link href="/jackpot">Jackpot</Link>
         <Link href="/buytix">Buy $TIX</Link>
@@ -39,12 +26,25 @@ const Navbar = () => {
         <Link href="/whitepaper">Whitepaper</Link>
       </div>
 
-      {/* WalletConnect - Right side always */}
-      <div className="ml-auto md:ml-4">
+      {/* Right Side: Wallet + Hamburger */}
+      <div className="flex items-center space-x-4">
         <WalletConnect />
+
+        {/* Hamburger (Mobile Only) */}
+        <div className="md:hidden">
+          <button onClick={() => setIsOpen(!isOpen)} className="focus:outline-none">
+            <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {isOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Dropdown - Mobile */}
+      {/* Dropdown - Mobile Only */}
       {isOpen && (
         <div className="absolute top-20 left-0 right-0 bg-black border-t border-yellow-400 flex flex-col items-center space-y-4 py-4 md:hidden z-50">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
