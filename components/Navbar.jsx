@@ -11,8 +11,8 @@ const Navbar = () => {
 
   return (
     <>
-      {/* Top Navbar */}
-      <nav className="fixed top-0 left-0 right-0 w-full bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50">
+      {/* Normal Navbar (not fixed) */}
+      <nav className="w-full bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50">
         {/* Logo */}
         <div className="w-32">
           <Link href="/">
@@ -49,10 +49,7 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Spacer below navbar (only when menu is closed) */}
-      {!isOpen && <div className="h-20 md:h-24" />}
-
-      {/* Dropdown Overlay - Mobile Only */}
+      {/* Mobile Dropdown Overlay */}
       {isOpen && (
         <div className="fixed inset-0 top-0 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center justify-center space-y-6 z-40 md:hidden pt-32">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
