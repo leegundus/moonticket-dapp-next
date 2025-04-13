@@ -12,7 +12,7 @@ const Navbar = () => {
   return (
     <>
       {/* Top Navbar */}
-      <nav className={`w-full bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50 ${isOpen ? "fixed top-0 left-0 right-0" : "relative"}`}>
+      <nav className="fixed top-0 left-0 right-0 w-full bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50">
         {/* Logo */}
         <div className="w-32">
           <Link href="/">
