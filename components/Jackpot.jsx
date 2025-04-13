@@ -62,8 +62,10 @@ export default function Jackpot() {
           <h2 className="text-xl font-semibold mb-2">Your Info This Week</h2>
           <p><strong>$TIX Purchased:</strong> {weeklyTix.toLocaleString()} $TIX</p>
           <p><strong>Your Entries:</strong> {entries.toFixed(2)} (Purchased: {purchaseEntries.toFixed(2)}, Tweets: {tweetEntries})</p>
-          <p><strong>$TIX Balance:</strong> {tixBalance?.toLocaleString()} $TIX</p>
-          <p><strong>SOL Balance:</strong> {Number(solBalance)?.toFixed(4)} SOL</p>
+          <hr className="my-4 border-yellow-400 w-full max-w-md sm:max-w-lg md:max-w-2x1 mx-auto" />
+          <h3 className="text-lg font-semibold mb-2">Wallet Balances</h3>
+          <p><strong>$TIX:</strong> {tixBalance?.toLocaleString()} $TIX</p>
+          <p><strong>SOL:</strong> {Number(solBalance)?.toFixed(4)} SOL</p>
         </div>
       ) : (
         <p>Connect wallet to see your entries.</p>
@@ -77,6 +79,13 @@ export default function Jackpot() {
           className="mx-auto cursor-pointer hover:scale-105 transition"
           onClick={() => setShowFreeModal(true)}
         />
+      </div>
+
+      {/* Legal Disclaimer */}
+      <div className="mt-10 max-w-x1 text-xs text-yellow-400 text-center">
+        <p>
+          This game is for entertainment purposes only and is not a financial instrument or investment. No purchase necessary to enter or win.  Free entry avaialble weekly via social media.
+        </p>
       </div>
 
       <TweetEntryModal

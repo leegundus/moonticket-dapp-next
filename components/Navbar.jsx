@@ -1,13 +1,5 @@
 import Link from "next/link";
-import dynamic from "next/dynamic";
-
-const WalletMultiButton = dynamic(
-  () =>
-    import("@solana/wallet-adapter-react-ui").then(
-      (mod) => mod.WalletMultiButton
-    ),
-  { ssr: false }
-);
+import WalletConnect from "./WalletConnect";
 
 const Navbar = () => {
   return (
@@ -30,7 +22,7 @@ const Navbar = () => {
         <Link href="/whitepaper">Whitepaper</Link>
       </div>
 
-      <WalletMultiButton className="!bg-yellow-400 !text-black !font-bold !px-4 !py-2 !rounded hover:!bg-yellow-500 transition" />
+      <WalletConnect />
     </nav>
   );
 };
