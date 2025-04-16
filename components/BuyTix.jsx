@@ -9,11 +9,12 @@ export default function BuyTix() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
-  const [solPriceUsd, setSolPriceUsd] = useState(0);
-  const [tixPriceUsd, setTixPriceUsd] = useState(0);
+  const [solPriceUsd, setSolPriceUsd] = useState(null);
+  const [tixPriceUsd, setTixPriceUsd] = useState(null);
   const [tixAmount, setTixAmount] = useState(0);
   const [entries, setEntries] = useState(0);
   const [showBonusModal, setShowBonusModal] = useState(false);
+  const [pricesLoaded, setPricesLoaded] = useState(false);
 
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
   const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
@@ -21,16 +22,35 @@ export default function BuyTix() {
   useEffect(() => {
     const fetchPrices = async () => {
       try {
+        setPricesLoaded(false);
         const res = await fetch("/api/prices");
         const data = await res.json();
         setSolPriceUsd(data.solPriceUsd);
         setTixPriceUsd(data.tixPriceUsd);
+        setPricesLoaded(true);
       } catch (err) {
         console.error("Failed to fetch price data:", err);
       }
     };
-    fetchPrices();
-  }, []);
+
+    if (publicKey) {
+      fetchPrices();
+    }
+
+    const provider = window?.solana;
+    if (provider?.on) {
+      const handleAccountChange = () => {
+        fetchPrices();
+        setSolInput("");
+        setTixAmount(0);
+        setEntries(0);
+        setResult(null);
+      };
+
+      provider.on("accountChanged", handleAccountChange);
+      return () => provider.removeListener("accountChanged", handleAccountChange);
+    }
+  }, [publicKey]);
 
   useEffect(() => {
     const sol = parseFloat(solInput);
@@ -101,7 +121,8 @@ export default function BuyTix() {
     <div className="bg-black text-yellow-400 min-h-screen p-6">
       <h1 className="text-2xl font-bold mb-4">Buy $TIX</h1>
       <p>
-        Live SOL: ${solPriceUsd?.toFixed(2) || "0.00"} | $TIX: ${tixPriceUsd?.toFixed(5) || "0.00000"}
+        Live SOL: {solPriceUsd ? `$${solPriceUsd.toFixed(2)}` : "Loading..."} |
+        $TIX: {tixPriceUsd ? `$${tixPriceUsd.toFixed(5)}` : "Loading..."}
       </p>
 
       <div className="my-4">
@@ -129,10 +150,10 @@ export default function BuyTix() {
 
       <button
         onClick={handleBuy}
-        disabled={loading || !publicKey}
+        disabled={loading || !publicKey || !pricesLoaded}
         className="bg-yellow-400 text-black font-semibold px-4 py-2 rounded hover:bg-yellow-300"
       >
-        {loading ? "Processing..." : "Buy $TIX"}
+        {loading || !pricesLoaded ? "Loading..." : "Buy $TIX"}
       </button>
 
       {result && result.success && (

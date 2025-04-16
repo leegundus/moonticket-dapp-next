@@ -63,7 +63,7 @@ export default function TweetEntryModal({ isOpen, onClose, isBonus = false }) {
 
         <button
           onClick={handleSubmit}
-          disabled={submitting || !tweetUrl}
+          disabled={submitting || !tweetUrl || !publicKey}
           className="bg-yellow-500 text-black px-4 py-2 rounded disabled:opacity-50"
         >
           {submitting ? 'Submitting...' : 'Claim Entry'}

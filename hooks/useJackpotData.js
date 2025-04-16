@@ -7,18 +7,23 @@ export default function useJackpotData() {
   const [jackpot, setJackpot] = useState(null);
 
   useEffect(() => {
+    const connection = new Connection("https://api.devnet.solana.com");
+
     const fetchJackpot = async () => {
       try {
-        const connection = new Connection("https://api.devnet.solana.com");
         const balance = await connection.getBalance(TREASURY_WALLET);
-        const sol = (balance / LAMPORTS_PER_SOL) * 0.9; //90% goes to winner
+        const sol = (balance / LAMPORTS_PER_SOL) * 0.8; // 80% goes to winner
         setJackpot({ jackpotSol: sol });
       } catch (err) {
         console.error("Failed to fetch treasury balance:", err);
       }
     };
 
-    fetchJackpot();
+    fetchJackpot(); // initial fetch
+
+    const interval = setInterval(fetchJackpot, 15000); // refresh every 15s
+
+    return () => clearInterval(interval);
   }, []);
 
   return jackpot;

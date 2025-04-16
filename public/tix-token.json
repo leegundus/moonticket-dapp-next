@@ -1,12 +1,7 @@
 {
-  "name": "Moonticket",
+  "name": "Moonticket Test",
   "symbol": "TIX",
   "description": "The official Moonticket utility token.",
-  "decimals": 6,
-  "image": "https://bafkreifrt3kysqsncyyqtheakr3bsajcnpizhhdaomiw34xhvbyp56txzu.ipfs.w3s.link",
-  "properties": {
-    "type": "token",
-    "utility": "jackpot entries, staking, NFT boosts, burns",
-    "total_supply": "1,000,000,000,000"
+  "image": "ipfs://QmeLMp7gxPq4mebuqzanUuy9oyhSdJrfuesAnfKBnP5dSQ",
   }
 } 

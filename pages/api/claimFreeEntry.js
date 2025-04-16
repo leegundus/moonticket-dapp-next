@@ -8,22 +8,26 @@ const supabase = createClient(
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { wallet, tweetUrl, isBonus = false } = req.body;
+  let { wallet, isBonus = false } = req.body;
 
-  if (!wallet || !tweetUrl) {
-    return res.status(400).json({ error: 'Missing wallet or tweet URL' });
+  if (!wallet) {
+    return res.status(400).json({ error: 'Missing wallet' });
   }
 
-  console.log("Received payload:", { wallet, tweetUrl, isBonus });
+  // Ensure isBonus is a real boolean
+  isBonus = typeof isBonus === 'string' ? isBonus === 'true' : !!isBonus;
+
+  console.log("Received payload:", { wallet, isBonus });
 
   try {
     const { start, end } = getDrawWindow();
     console.log("Checking between:", start.toISOString(), "and", end.toISOString());
 
     const { data: existing, error: selectError } = await supabase
-      .from('free_entries')
+      .from('entries')
       .select('*')
       .eq('wallet', wallet)
+      .eq('entry_type', 'tweet')
       .eq('is_bonus', isBonus)
       .gte('created_at', start.toISOString())
       .lt('created_at', end.toISOString());
@@ -34,12 +38,18 @@ export default async function handler(req, res) {
     }
 
     if (existing.length > 0) {
-      console.log("Entry already exists for this wallet + bonus type.");
+      console.log("Entry already exists for this wallet + is_bonus value.");
       return res.status(400).json({ error: 'Already claimed this entry type this week' });
     }
 
-    const { error: insertError } = await supabase.from('free_entries').insert([
-      { wallet, tweet_url: tweetUrl, is_bonus: isBonus },
+    const { error: insertError } = await supabase.from('entries').insert([
+      {
+        wallet,
+        entry_type: 'tweet',
+        entries: 1,
+        tix_amount: 1,
+        is_bonus: isBonus,
+      },
     ]);
 
     if (insertError) {

@@ -25,7 +25,7 @@ export default function useEntries(publicKey) {
 
         console.log("Supabase data received:", data);
 
-        const purchaseEntries = data.weeklyEntries || 0;
+        const purchaseEntries = data.purchaseEntries || 0;
         const tweetEntries = data.tweetEntries || 0;
 
         setEntries({

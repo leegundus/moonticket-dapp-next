@@ -5,38 +5,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-function getDrawWindowUTC() {
-  const now = new Date();
-
-  // Convert to Central Time (UTC-6)
-  const utcOffset = now.getTimezoneOffset(); // e.g. 300 minutes
-  const centralOffset = 6 * 60;
-  const diffMinutes = centralOffset - utcOffset;
-  const nowCentral = new Date(now.getTime() + diffMinutes * 60000);
-
-  // Last Monday at 10pm CT
-  const day = nowCentral.getDay();
-  const diffToMonday = (day + 6) % 7;
-  const lastMonday = new Date(
-    nowCentral.getFullYear(),
-    nowCentral.getMonth(),
-    nowCentral.getDate() - diffToMonday,
-    22, 0, 0
-  );
-
-  // If still Monday but before 10pm CT, go back one week
-  if (day === 1 && nowCentral.getHours() < 22) {
-    lastMonday.setDate(lastMonday.getDate() - 7);
-  }
-
-  const nextMonday = new Date(lastMonday.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-  return {
-    startISO: new Date(lastMonday.getTime() + utcOffset * 60000).toISOString(),
-    endISO: new Date(nextMonday.getTime() + utcOffset * 60000).toISOString(),
-  };
-}
-
 export default async function handler(req, res) {
   const { wallet } = req.query;
 
@@ -44,41 +12,55 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing wallet parameter" });
   }
 
-  const { startISO, endISO } = getDrawWindowUTC();
-
   try {
-    // Fetch purchased entries
-    const { data, error } = await supabase
+    // Get most recent moon draw
+    const { data: draws, error: drawError } = await supabase
+      .from("draws")
+      .select("draw_date")
+      .eq("draw_type", "moon")
+      .order("draw_date", { ascending: false })
+      .limit(1);
+
+    if (drawError) {
+      console.error("Draw lookup failed:", drawError.message);
+      return res.status(500).json({ error: "Failed to fetch latest draw" });
+    }
+
+    const lastDrawDate = draws?.[0]?.draw_date;
+    const since = lastDrawDate ? new Date(lastDrawDate) : null;
+
+    console.log("=== User Entry Query ===");
+    console.log("Wallet:", wallet);
+    console.log("Since:", since?.toISOString() || "All time (no draws yet)");
+    console.log("========================");
+
+    // Fetch all entries for wallet
+    const { data: allRows, error: allError } = await supabase
       .from("entries")
       .select("*")
-      .eq("wallet", wallet)
-      .gte("created_at", startISO)
-      .lt("created_at", endISO);
+      .eq("wallet", wallet);
 
-    if (error) {
-      console.error("Supabase query error:", error.message);
-      return res.status(500).json({ error: "Failed to fetch data" });
+    if (allError) {
+      console.error("Supabase query error:", allError.message);
+      return res.status(500).json({ error: "Failed to fetch raw data" });
     }
+
+    // Filter by draw timestamp
+    const filtered = since
+      ? allRows.filter(row => new Date(row.created_at) >= since)
+      : allRows;
 
     let weeklyTix = 0;
     let purchaseEntries = 0;
+    let tweetEntries = 0;
 
-    for (const entry of data) {
-      weeklyTix += entry.tix_amount;
-      purchaseEntries += entry.entries;
-    }
-
-    // Count free tweet entries
-    const { count: tweetEntries, error: tweetError } = await supabase
-      .from("free_entries")
-      .select("*", { count: "exact", head: true })
-      .eq("wallet", wallet)
-      .gte("created_at", startISO)
-      .lt("created_at", endISO);
-
-    if (tweetError) {
-      console.error("Supabase tweet count error:", tweetError.message);
-      return res.status(500).json({ error: "Failed to fetch tweet entries" });
+    for (const entry of filtered) {
+      if (entry.entry_type === "purchase") {
+        weeklyTix += entry.tix_amount;
+        purchaseEntries += entry.entries;
+      } else if (entry.entry_type === "tweet") {
+        tweetEntries += entry.entries;
+      }
     }
 
     const weeklyEntries = purchaseEntries + tweetEntries;
@@ -88,6 +70,11 @@ export default async function handler(req, res) {
       purchaseEntries,
       tweetEntries,
       weeklyEntries,
+      debug: {
+        drawSince: since?.toISOString() || null,
+        filtered,
+        raw: allRows
+      }
     });
   } catch (err) {
     console.error("API error:", err.message);
