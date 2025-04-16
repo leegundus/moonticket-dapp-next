@@ -26,6 +26,15 @@ export default function Jackpot() {
   const jackpotUsd = jackpotSol * solPrice;
 
   useEffect(() => {
+    const hasReloaded = sessionStorage.getItem("walletReloaded");
+    if (typeof window !== "undefined" && window.solana?.isConnected && !publicKey && !hasReloaded) {
+      console.log("Re-entered Jackpot with connected wallet but no publicKey — reloading...");
+      sessionStorage.setItem("walletReloaded", "true");
+      window.location.reload();
+    }
+  }, []);
+
+  useEffect(() => {
     if (publicKey) {
       setWalletKey((prev) => prev + 1);
     }
