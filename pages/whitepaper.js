@@ -1,127 +1,97 @@
-// pages/whitepaper.js
-
 export default function Whitepaper() {
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-8">
-      <h1 className="text-3xl font-bold text-center mb-6">Moonticket Whitepaper – April 2025 Edition</h1>
+    <div className="bg-black text-yellow-400 min-h-screen p-8 text-center">
+      <h1 className="text-3xl font-bold mb-6">Moonticket Whitepaper – April 2025 Edition</h1>
 
-      <div className="max-w-3xl mx-auto space-y-6 text-lg">
-        {/* Overview */}
+      {/* Overview */}
+      <div className="max-w-3xl mx-auto text-left space-y-4 text-lg">
+        <h2 className="text-2xl font-semibold mb-2 text-center">Overview</h2>
+        <p>
+          Moonticket is the ultimate weekly crypto lottery built on Solana. By purchasing $TIX through the official Moonticket DApp, users automatically earn entries into a weekly jackpot drawing — held every Monday night. The more $TIX you buy, the more entries you get. However, to remain eligible, you must still be holding those tokens at the time of the draw.
+        </p>
+        <p>
+          This design encourages ongoing participation and reward loyalty. Moonticket’s future roadmap includes NFTs that boost your entries, the ability to stake $TIX for passive yield, and a burn-to-earn mechanic that reduces token supply while granting bonus entries.
+        </p>
+        <p><strong>Launch price:</strong> $0.0001 per $TIX</p>
+        <p><strong>Get your $TIX — and let’s take it to the moon.</strong></p>
+      </div>
+
+      {/* Phase 1 */}
+      <img src="/new-moon-phase-1.png" alt="Phase 1" className="mx-auto w-96 my-12" />
+
+      <div className="max-w-3xl mx-auto text-left space-y-6 text-lg">
         <section>
-          <h2 className="text-2xl font-semibold mb-2">Overview:</h2>
+          <h2 className="text-2xl font-semibold text-center mb-2">Jackpot Draw Mechanics</h2>
           <p>
-            Moonticket is the ultimate weekly crypto lottery built on Solana — where <strong>holding $TIX earns you a shot at the moon</strong>.
-            Users are <strong>rewarded with entries</strong> into the weekly jackpot draw for <strong>$TIX acquired through the Moonticket DApp</strong>.
+            The Moonticket DApp funds a weekly jackpot pool. Every Monday at 10pm CT, a winner is randomly selected from the current entry pool. Entries are based solely on DApp purchases made within the active draw window. The winner receives 80% of the jackpot in SOL, and the remaining 20% is sent to the Ops Wallet for operational and development growth.
           </p>
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-semibold text-center mb-2">DApp Entry Rules</h2>
           <p>
-            The more $TIX you own through the DApp, the more entries you receive — but you must <strong>hold $TIX at the time of the draw</strong> to stay eligible.
-            This encourages stacking, loyalty, and long-term participation.
+            Entries are generated only when users purchase $TIX through the official Moonticket DApp. You must still be holding those $TIX at the time of the drawing to remain eligible. $TIX received through DEXs, transfers, or gifts do not contribute toward entries.
           </p>
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-semibold text-center mb-2">Tokenomics</h2>
+          <ul className="list-disc list-inside space-y-1">
+            <li><strong>Token:</strong> Moonticket ($TIX)</li>
+            <li><strong>Total Supply:</strong> 1 Trillion</li>
+            <li><strong>Decimals:</strong> 9</li>
+            <li><strong>Launch Price:</strong> $0.0001 per $TIX</li>
+            <li><strong>Allocation:</strong> 10% to team wallet, 90% to jackpots, staking, burns, liquidity</li>
+          </ul>
+        </section>
+      </div>
+
+      {/* Phase 2 */}
+      <img src="/half-moon-phase-2.png" alt="Phase 2" className="mx-auto w-96 my-12" />
+
+      <div className="max-w-3xl mx-auto text-left space-y-6 text-lg">
+        <section>
+          <h2 className="text-2xl font-semibold text-center mb-2">NFT Boosters (Coming Soon)</h2>
           <p>
-            DEX trading is coming soon. You’ll be able to <strong>buy/sell $TIX on-chain</strong>, in addition to staking, burning, and boosting with NFTs.
+            Moonticket will launch limited-edition NFTs that boost your jackpot entries. Each NFT must be held at the time of the draw to activate its bonus. Boosts are stackable and can reach up to 100% total. All mint proceeds go to the Ops Wallet, and a 5% royalty applies to secondary sales.
           </p>
-          <p><strong>Launch price:</strong> $0.0001 per $TIX</p>
-          <p><strong>Get your $TIX — and let’s take it to the moon.</strong></p>
+          <ul className="list-disc list-inside space-y-1 mt-2">
+            <li><strong>Gold Moonticket:</strong> +25% boost — 1.00 SOL — 1,000 supply</li>
+            <li><strong>Silver Moonticket:</strong> +15% boost — 0.60 SOL — 5,000 supply</li>
+            <li><strong>Bronze Moonticket:</strong> +5% boost — 0.20 SOL — 10,000 supply</li>
+          </ul>
         </section>
+      </div>
 
-        <hr className="border-yellow-400 my-4" />
+      {/* Phase 3 */}
+      <img src="/full-moon-phase-3.png" alt="Phase 3" className="mx-auto w-96 my-12" />
 
-        {/* Jackpot Draw */}
+      <div className="max-w-3xl mx-auto text-left space-y-6 text-lg">
+
         <section>
-          <h2 className="text-2xl font-semibold mb-2">Jackpot Draw Mechanics</h2>
-          <ul className="list-disc list-inside space-y-1">
-            <li><strong>Weekly Moon Draws</strong> are held every <strong>Monday at 10pm CentralTime</strong>.</li>
-            <li>Jackpot is funded by DApp $TIX purchases (1% to Ops, 99% to Treasury).</li>
-            <li>At draw time, a random winner is selected from the eligible entry pool.</li>
-            <li><strong>Payout structure</strong>: 80% to winner, 20% to Ops Wallet</li>
+          <h2 className="text-2xl font-semibold text-center mb-2">Staking</h2>
+          <p>
+            Users will be able to stake $TIX tokens to earn passive yield. The longer the staking period, the higher the annualized return. All staking rewards will be paid out in $TIX, and early unstaking may result in penalties.
+          </p>
+          <ul className="list-disc list-inside space-y-1 mt-2">
+            <li><strong>30 Days:</strong> 10% APY</li>
+            <li><strong>90 Days:</strong> 25% APY</li>
+            <li><strong>180 Days:</strong> 50% APY</li>
           </ul>
         </section>
 
-        <hr className="border-yellow-400 my-4" />
-
-        {/* Entry Rules */}
         <section>
-          <h2 className="text-2xl font-semibold mb-2">Entry Rules</h2>
-          <ul className="list-disc list-inside space-y-1">
-            <li><strong>Entries are rewarded for $TIX purchased through the DApp only.</strong></li>
-            <li>Users must <strong>hold $TIX at the time of the draw</strong> to remain eligible.</li>
-            <li>Entries are determined <strong>at the time of drawing</strong>, based on your <strong>current $TIX balance and DApp purchase history</strong>.</li>
-            <li>DEX-purchased or gifted $TIX does <strong>not</strong> generate entries.</li>
-          </ul>
+          <h2 className="text-2xl font-semibold text-center mb-2">Burn-to-Earn</h2>
+          <p>
+            Moonticket introduces a deflationary mechanic where users can permanently burn $TIX in exchange for bonus entries into the weekly draw. For every $2 worth of $TIX you burn, you’ll receive 1 extra jackpot entry. Weekly caps may apply to ensure fairness across all holders.
+          </p>
         </section>
 
-        <hr className="border-yellow-400 my-4" />
-
-        {/* Tokenomics */}
         <section>
-          <h2 className="text-2xl font-semibold mb-2">Tokenomics</h2>
-          <ul className="list-disc list-inside space-y-1">
-            <li><strong>Token Name</strong>: Moonticket</li>
-            <li><strong>Symbol</strong>: $TIX</li>
-            <li><strong>Total Supply</strong>: 1 Trillion</li>
-            <li><strong>Decimals</strong>: 9</li>
-            <li><strong>Launch Price</strong>: $0.0001 per $TIX</li>
-            <li><strong>10%</strong> held by the team (founder wallet)</li>
-            <li><strong>90%</strong> reserved for jackpots, staking, burns, and liquidity</li>
-            <li>$TIX is a <strong>utility token</strong> for jackpots, staking, NFTs, and burns.</li>
-          </ul>
-        </section>
-
-        <hr className="border-yellow-400 my-4" />
-
-        {/* Burn to Earn */}
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Burn-to-Earn (Coming Soon)</h2>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Burn $TIX to receive bonus jackpot entries.</li>
-            <li><strong>2:1 USD ratio</strong>: Burn $2 of $TIX = 1 entry.</li>
-            <li>Weekly cap on burn-based entries to maintain fairness.</li>
-            <li>All burns are permanent and deflationary.</li>
-          </ul>
-        </section>
-
-        <hr className="border-yellow-400 my-4" />
-
-        {/* NFT Boosters */}
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">NFT Boosters (Coming Soon)</h2>
-          <ul className="list-disc list-inside space-y-1">
-            <li>Own special NFTs to boost your jackpot entries.</li>
-            <li><strong>Gold Moonticket</strong>: +25% bonus entries — Mint Price: 1.00 SOL — Supply: 1,000</li>
-            <li><strong>Silver Moonticket</strong>: +15% bonus entries — Mint Price: 0.60 SOL — Supply: 5,000</li>
-            <li><strong>Bronze Moonticket</strong>: +5% bonus entries — Mint Price: 0.20 SOL — Supply: 10,000</li>
-            <li>Boosts apply as long as you <strong>hold the NFT</strong> at draw time.</li>
-            <li><strong>Boosts are stackable</strong> up to a maximum 100% boost.</li>
-            <li>All mint proceeds go to the <strong>Ops Wallet</strong>. Secondary sales include a <strong>5% royalty</strong> to the Ops Wallet.</li>
-          </ul>
-        </section>
-
-        <hr className="border-yellow-400 my-4" />
-
-        {/* Staking */}
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Staking (Coming Soon)</h2>
-          <p>Stake your $TIX to earn passive rewards. Longer lockups = higher APY.</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li><strong>30 Days</strong> — 10% APY</li>
-            <li><strong>90 Days</strong> — 25% APY</li>
-            <li><strong>180 Days</strong> — 50% APY</li>
-          </ul>
-          <p>Unstaking early will incur a penalty. Rewards are distributed in $TIX.</p>
-        </section>
-
-        <hr className="border-yellow-400 my-4" />
-
-        {/* Treasury & Ops */}
-        <section>
-          <h2 className="text-2xl font-semibold mb-2">Ops & Treasury Structure</h2>
-          <ul className="list-disc list-inside space-y-1">
-            <li>All SOL from DApp $TIX purchases is split:</li>
-            <li><strong>99%</strong> to the Treasury Wallet (for jackpots)</li>
-            <li><strong>1%</strong> to the Ops Wallet</li>
-            <li>The Treasury Wallet funds the weekly Moon Draws.</li>
-            <li>The Ops Wallet also receives <strong>20% of each jackpot payout</strong>.</li>
-          </ul>
+          <h2 className="text-2xl font-semibold text-center mb-2">DEX Trading</h2>
+          <p>
+            $TIX will eventually be available on Solana DEXes like Raydium. Once listed, users will be able to freely trade $TIX.
+          </p>
         </section>
       </div>
     </div>

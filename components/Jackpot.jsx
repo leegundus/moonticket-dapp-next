@@ -92,12 +92,12 @@ export default function Jackpot() {
           {typeof window !== "undefined" &&
             window?.solana?.isConnected &&
             !publicKey && (
-              <button
+              <img
+                src="/load-data-button.png"
+                alt="Load Wallet Data"
+                className="w-96 h-auto mx-auto mt-4 cursor-pointer hover:scale-105 transition"
                 onClick={() => window.location.reload()}
-                className="mt-4 bg-yellow-400 text-black px-4 py-2 rounded hover:bg-yellow-300 transition"
-              >
-                Load Wallet Data
-              </button>
+              />
             )}
          </>
        )}

@@ -4,7 +4,7 @@ export default function Staking() {
       <img
         src="/tix-logo-staking-2.png"
         alt="Staking Logo"
-        className="w-32 md:w-40 mb-6"
+        className="mx-auto"
       />
       <h1 className="text-3xl font-bold mb-4">Staking (Coming Soon)</h1>
       <p className="mb-6 max-w-xl">

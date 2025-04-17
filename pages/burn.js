@@ -6,7 +6,7 @@ export default function Burn() {
       <img
         src="/tix-logo-burn.png"
         alt="Burn to Earn"
-        className="w-40 md:w-52 mb-6"
+        className="mx-auto"
       />
       <h1 className="text-2xl md:text-3xl font-bold mb-4 text-center">
         Burn to Earn (Coming Soon)

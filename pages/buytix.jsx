@@ -12,7 +12,7 @@ export default function BuyTixPage() {
       <img
         src="/tix-coin-web.png"
         alt="$TIX Coin"
-        className="w-40 md:w-52 lg:w-64 mb-6"
+        className="mx-auto"
       />
 
       {/* Centered BuyTix Component */}
