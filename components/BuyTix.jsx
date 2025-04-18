@@ -144,8 +144,11 @@ export default function BuyTix() {
   };
 
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-6 text-center pt-30" key={walletKey}>
-      <img src="/tix-coin-web.png" alt="$TIX Coin" className="mx-auto" />
+    <div className="bg-black text-yellow-400 min-h-screen p-6 text-center pt-40" key={walletKey}>
+      <h1 className="text-3xl font-bold mb-2">The Official Token of Moonticket</h1>
+      <p className="text-lg mb-6">Get your TIX to the moon.</p>
+
+      <img src="/tix-coin-web.png" alt="$TIX Coin" className="mx-auto mb-6" />
 
       {!publicKey ? (
         <>

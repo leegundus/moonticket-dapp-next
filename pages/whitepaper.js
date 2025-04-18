@@ -1,6 +1,6 @@
 export default function Whitepaper() {
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-8 text-center pt-40">
+    <div className="bg-black text-yellow-400 min-h-screen p-8 text-center w-full overflow-x-hidden pt-40">
       <h1 className="text-3xl font-bold mb-6">Moonticket Whitepaper – April 2025 Edition</h1>
 
       {/* Overview */}
@@ -21,7 +21,7 @@ export default function Whitepaper() {
 
 
       {/* Phase 1 */}
-      <img src="/new-moon-phase-1.png" alt="Phase 1" className="mx-auto w-96 my-12" />
+      <img src="/new-moon-phase-1.png" alt="Phase 1" className="mx-auto w-full max-w-md my-8" />
 
       <div className="max-w-3xl mx-auto text-left space-y-6 text-lg">
         <section>
@@ -51,7 +51,7 @@ export default function Whitepaper() {
       </div>
 
       {/* Phase 2 */}
-      <img src="/half-moon-phase-2.png" alt="Phase 2" className="mx-auto w-96 my-12" />
+      <img src="/half-moon-phase-2.png" alt="Phase 2" className="mx-auto w-full max-w-md my-8" />
 
       <div className="max-w-3xl mx-auto text-left space-y-6 text-lg">
         <section>
@@ -68,7 +68,7 @@ export default function Whitepaper() {
       </div>
 
       {/* Phase 3 */}
-      <img src="/full-moon-phase-3.png" alt="Phase 3" className="mx-auto w-96 my-12" />
+      <img src="/full-moon-phase-3.png" alt="Phase 3" className="mx-auto w-full max-w-md my-8" />
 
       <div className="max-w-3xl mx-auto text-left space-y-6 text-lg">
 

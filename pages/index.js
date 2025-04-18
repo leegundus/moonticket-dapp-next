@@ -12,7 +12,7 @@ export default function Home() {
 
       {/* Description */}
       <p className="text-center max-w-2xl px-4 text-lg">
-        Moonticket is a weekly crypto prize draw powered by $TIX. Every $1 spent through the DApp earns one entry into the next jackpot. You can also claim <strong>one free entry per week</strong> by tweeting about Moonticket.
+        Moonticket is a weekly crypto prize draw powered by TIX. Earn 1 jackpot entry for every $1 of TIX you buy on the Buy TIX page. You can also claim 1 free entry each week — and a bonus entry after buying — by tweeting about Moonticket. 
         <br /><br />
         <strong>All entries reset each week</strong> — so participate weekly to stay eligible!
         <br /><br />
