@@ -236,7 +236,7 @@ export default function BuyTix() {
 
       {showReload && (
         <img
-          src="/load-data-button.png"
+          src="/load-prices-button.png"
           alt="Load Prices"
           className="w-96 h-auto mx-auto mt-4 cursor-pointer hover:scale-105 transition"
           onClick={() => window.location.reload()}
