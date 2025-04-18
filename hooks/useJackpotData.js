@@ -13,6 +13,7 @@ export default function useJackpotData() {
       try {
         const balance = await connection.getBalance(TREASURY_WALLET);
         const sol = (balance / LAMPORTS_PER_SOL) * 0.8; // 80% goes to winner
+        console.log("Jackpot balance (SOL):", sol);
         setJackpot({ jackpotSol: sol });
       } catch (err) {
         console.error("Failed to fetch treasury balance:", err);
