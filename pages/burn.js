@@ -2,7 +2,7 @@
 
 export default function Burn() {
   return (
-    <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center justify-start py-10 px-4">
+    <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center justify-start py-10 px-4 pt-40">
       <img
         src="/tix-logo-burn.png"
         alt="Burn to Earn"

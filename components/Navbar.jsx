@@ -12,7 +12,7 @@ const Navbar = () => {
   return (
     <>
       {/* Normal Navbar (not fixed) */}
-      <nav className="w-full bg-black text-yellow-400 px-6 py-4 flex items-center justify-between border-b border-yellow-400 z-50">
+      <nav className="fixed top-0 left-0 w-full bg-black text-yellow-400 px-6 py-1 flex items-center justify-between border-b border-yellow-400 z-50">
         {/* Logo */}
         <div className="w-32">
           <Link href="/">
@@ -23,8 +23,8 @@ const Navbar = () => {
         {/* Desktop Nav */}
         <div className="hidden md:flex space-x-6">
           <Link href="/">Home</Link>
-          <Link href="/jackpot">Jackpot</Link>
-          <Link href="/buytix">Buy $TIX</Link>
+          <button onClick={() => window.location.href = "/jackpot"} className="text-yellow-400 hover:test-white">Jackpot</button>
+          <button onClick={() => window.location.href = "/buytix"} className="text-yellow-400 hover:test-white">Buy TIX</button>
           <Link href="/past">Winners</Link>
           <Link href="/nfts">NFTs</Link>
           <Link href="/burn">Burn to Earn</Link>

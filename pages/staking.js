@@ -1,6 +1,6 @@
 export default function Staking() {
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-6 flex flex-col items-center text-center">
+    <div className="bg-black text-yellow-400 min-h-screen p-6 flex flex-col items-center text-center pt-40">
       <img
         src="/tix-logo-staking-2.png"
         alt="Staking Logo"

@@ -14,7 +14,7 @@ export default function PastDrawings() {
   }, []);
 
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-6">
+    <div className="bg-black text-yellow-400 min-h-screen p-6 pt-40">
       <h1 className="text-2xl font-bold mb-4">Past Drawings</h1>
 
       {draws.length === 0 ? (

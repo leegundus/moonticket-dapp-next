@@ -54,7 +54,7 @@ export default function Jackpot() {
   }, []);
 
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-6 flex flex-col items-center text-center">
+    <div className="bg-black text-yellow-400 min-h-screen p-6 flex flex-col items-center text-center pt-40">
       <h1 className="text-3xl font-bold mb-6">Moonticket Jackpot</h1>
 
       <div className="mb-6">

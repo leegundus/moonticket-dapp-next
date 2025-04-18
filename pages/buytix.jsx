@@ -7,20 +7,8 @@ const BuyTix = dynamic(() => import("../components/BuyTix"), { ssr: false });
 
 export default function BuyTixPage() {
   return dynamicWalletProvider(
-    <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center pt-8">
-      {/* Centered Logo at Top */}
-      <img
-        src="/tix-coin-web.png"
-        alt="$TIX Coin"
-        className="mx-auto"
-      />
-
-      {/* Centered BuyTix Component */}
-      <div className="w-full flex justify-center">
-        <div className="max-w-md w-full px-4 text-center">
+    <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center pt-8 pt-40">
           <BuyTix />
-        </div>
-      </div>
     </div>
   );
 }

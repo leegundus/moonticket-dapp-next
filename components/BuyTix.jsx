@@ -5,6 +5,7 @@ import TweetEntryModal from "./TweetEntryModal";
 
 export default function BuyTix() {
   const { publicKey, signTransaction } = useWallet();
+  const [walletKey, setWalletKey] = useState(0);
   const [solInput, setSolInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -15,9 +16,24 @@ export default function BuyTix() {
   const [entries, setEntries] = useState(0);
   const [showBonusModal, setShowBonusModal] = useState(false);
   const [pricesLoaded, setPricesLoaded] = useState(false);
+  const [showReload, setShowReload] = useState(false); // NEW
 
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
   const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
+
+  useEffect(() => {
+    const hasReloaded = sessionStorage.getItem("walletReloaded");
+    if (typeof window !== "undefined" && window.solana?.isConnected && !publicKey && !hasReloaded) {
+      sessionStorage.setItem("walletReloaded", "true");
+      window.location.reload();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (publicKey) {
+      setWalletKey((prev) => prev + 1);
+    }
+  }, [publicKey]);
 
   useEffect(() => {
     const fetchPrices = async () => {
@@ -40,13 +56,9 @@ export default function BuyTix() {
     const provider = window?.solana;
     if (provider?.on) {
       const handleAccountChange = () => {
-        fetchPrices();
-        setSolInput("");
-        setTixAmount(0);
-        setEntries(0);
-        setResult(null);
+        sessionStorage.removeItem("walletReloaded");
+        window.location.reload();
       };
-
       provider.on("accountChanged", handleAccountChange);
       return () => provider.removeListener("accountChanged", handleAccountChange);
     }
@@ -65,6 +77,20 @@ export default function BuyTix() {
       setEntries(0);
     }
   }, [solInput, solPriceUsd, tixPriceUsd]);
+
+  // NEW: Show reload button if Phantom is connected but publicKey not ready
+  useEffect(() => {
+    const checkReloadStatus = () => {
+      if (typeof window !== "undefined" && window.solana?.isConnected && !publicKey) {
+        setShowReload(true);
+      } else {
+        setShowReload(false);
+      }
+    };
+    checkReloadStatus();
+    const interval = setInterval(checkReloadStatus, 500);
+    return () => clearInterval(interval);
+  }, [publicKey]);
 
   const handleBuy = async () => {
     if (!publicKey || isNaN(parseFloat(solInput))) return;
@@ -118,76 +144,103 @@ export default function BuyTix() {
   };
 
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-6">
-      <h1 className="text-2xl font-bold mb-4">Buy $TIX</h1>
-      <p>
-        Live SOL: {solPriceUsd ? `$${solPriceUsd.toFixed(2)}` : "Loading..."} |
-        $TIX: {tixPriceUsd ? `$${tixPriceUsd.toFixed(5)}` : "Loading..."}
-      </p>
+    <div className="bg-black text-yellow-400 min-h-screen p-6 text-center pt-30" key={walletKey}>
+      <img src="/tix-coin-web.png" alt="$TIX Coin" className="mx-auto" />
 
-      <div className="my-4">
-        <label>Enter SOL:</label>
-        <input
-          type="number"
-          value={solInput}
-          onChange={(e) => setSolInput(e.target.value)}
-          placeholder="e.g. 0.05"
-          className="text-black p-2 ml-2 w-32 rounded"
-        />
-      </div>
-
-      {result && result.success ? (
-        <div className="mb-4">
-          <p><strong>You’ll receive:</strong> {result.tixAmount.toLocaleString()} $TIX</p>
-          <p><strong>Entries earned:</strong> {result.usdSpent.toFixed(2)}</p>
-        </div>
-      ) : tixAmount > 0 && (
-        <div className="mb-4">
-          <p><strong>You’ll receive:</strong> {tixAmount.toLocaleString()} $TIX</p>
-          <p><strong>Entries earned:</strong> {entries.toFixed(2)}</p>
-        </div>
-      )}
-
-      <button
-        onClick={handleBuy}
-        disabled={loading || !publicKey || !pricesLoaded}
-        className="bg-yellow-400 text-black font-semibold px-4 py-2 rounded hover:bg-yellow-300"
-      >
-        {loading || !pricesLoaded ? "Loading..." : "Buy $TIX"}
-      </button>
-
-      {result && result.success && (
+      {!publicKey ? (
         <>
-          <div className="mt-4 text-green-400">
-            <p>Success! You bought {result.tixAmount.toLocaleString()} $TIX</p>
-            <p>using {result.solAmount} SOL (~${result.usdSpent.toFixed(2)} USD).</p>
-            <p>
-              Rate: ${result.tixPriceUsd?.toFixed(5)} per $TIX | SOL: ${result.solPriceUsd?.toFixed(2)}
-            </p>
-          </div>
+          <p>
+            {typeof window !== "undefined" && window?.solana?.isConnected && !publicKey
+              ? "Wallet connected."
+              : "Connect wallet to buy TIX."}
+          </p>
+        </>
+      ) : !pricesLoaded ? (
+        <>
+          <p>Wallet connected.</p>
+        </>
+      ) : (
+        <>
+          <p>
+            Live SOL: {solPriceUsd ? `$${solPriceUsd.toFixed(2)}` : "Loading..."} |
+            TIX: {tixPriceUsd ? `$${tixPriceUsd.toFixed(5)}` : "Loading..."}
+          </p>
 
-          <div className="mt-6 text-center">
-            <p className="text-white mb-2">Get 1 bonus entry by tweeting!</p>
-            <img
-              src="/freeTix-button.png"
-              alt="Claim Bonus Entry"
-              className="mx-auto cursor-pointer hover:scale-105 transition"
-              onClick={() => setShowBonusModal(true)}
+          <div className="my-4">
+            <label>Enter SOL:</label>
+            <input
+              type="number"
+              value={solInput}
+              onChange={(e) => setSolInput(e.target.value)}
+              placeholder="e.g. 0.05"
+              className="text-black p-2 ml-2 w-32 rounded"
             />
           </div>
 
-          <TweetEntryModal
-            isOpen={showBonusModal}
-            onClose={() => setShowBonusModal(false)}
-            isBonus={true}
-          />
+          {result && result.success ? (
+            <div className="mb-4">
+              <p><strong>You’ll receive:</strong> {result.tixAmount.toLocaleString()} TIX</p>
+              <p><strong>Entries earned:</strong> {result.usdSpent.toFixed(2)}</p>
+            </div>
+          ) : tixAmount > 0 && (
+            <div className="mb-4">
+              <p><strong>You’ll receive:</strong> {tixAmount.toLocaleString()} TIX</p>
+              <p><strong>Entries earned:</strong> {entries.toFixed(2)}</p>
+            </div>
+          )}
+    {(!loading && pricesLoaded) ? (
+    <img
+      src="/buyTix-button.png"
+      alt="Buy $TIX"
+      onClick={handleBuy}
+      className="mx-auto mt-4 w-64 h-auto cursor-pointer hover:scale-105 transition"
+    />
+  ) : (
+    <p className="mt-4 text-yellow-400">Loading...</p>
+  )}
+          {result && result.success && (
+            <>
+              <div className="mt-4 text-green-400">
+                <p>Success! You bought {result.tixAmount.toLocaleString()} TIX</p>
+                <p>using {result.solAmount} SOL (~${result.usdSpent.toFixed(2)} USD).</p>
+                <p>
+                  Rate: ${result.tixPriceUsd?.toFixed(5)} per $TIX | SOL: ${result.solPriceUsd?.toFixed(2)}
+                </p>
+              </div>
+
+              <div className="mt-6 text-center">
+                <p className="text-white mb-2">Get 1 bonus entry by tweeting!</p>
+                <img
+                  src="/freeTix-button.png"
+                  alt="Claim Bonus Entry"
+                  className="mx-auto cursor-pointer hover:scale-105 transition"
+                  onClick={() => setShowBonusModal(true)}
+                />
+              </div>
+
+              <TweetEntryModal
+                isOpen={showBonusModal}
+                onClose={() => setShowBonusModal(false)}
+                isBonus={true}
+              />
+            </>
+          )}
+
+          {result && !result.success && (
+            <div className="mt-4 text-red-400">
+              <p>{result.error || "An error occurred."}</p>
+            </div>
+          )}
         </>
       )}
 
-      {result && !result.success && (
-        <div className="mt-4 text-red-400">
-          <p>{result.error || "An error occurred."}</p>
-        </div>
+      {showReload && (
+        <img
+          src="/load-data-button.png"
+          alt="Load Prices"
+          className="w-96 h-auto mx-auto mt-4 cursor-pointer hover:scale-105 transition"
+          onClick={() => window.location.reload()}
+        />
       )}
     </div>
   );
