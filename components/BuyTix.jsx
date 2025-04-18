@@ -98,7 +98,7 @@ export default function BuyTix() {
     setResult(null);
 
     try {
-      const connection = new Connection("https://api.devnet.solana.com");
+      const connection = new Connection("https://api.mainnet-beta.solana.com");
       const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
       const opsLamports = Math.floor(totalLamports * 0.01);
       const treasuryLamports = totalLamports - opsLamports;

@@ -7,7 +7,7 @@ export default function useJackpotData() {
   const [jackpot, setJackpot] = useState(null);
 
   useEffect(() => {
-    const connection = new Connection("https://api.devnet.solana.com");
+    const connection = new Connection("https://api.mainnet-beta.solana.com");
 
     const fetchJackpot = async () => {
       try {

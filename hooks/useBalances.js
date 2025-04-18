@@ -8,8 +8,8 @@ import {
 } from "@solana/spl-token";
 import { useWallet } from "@solana/wallet-adapter-react";
 
-const TIX_MINT_ADDRESS = new PublicKey("CnDaNe3EpAgu2R2aK49nhnH9byf9Y3TWpm689uxavMbM"); // your latest $TIX mint
-const connection = new Connection("https://api.devnet.solana.com");
+const TIX_MINT_ADDRESS = new PublicKey("8e9Mqnczw7MHjdjYaRe3tppbXgRdT6bqTyR3n8b4C4Ek"); // your latest $TIX mint
+const connection = new Connection("https://api.mainnet-beta.solana.com");
 
 export default function useBalances() {
   const { publicKey } = useWallet();
