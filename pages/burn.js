@@ -12,12 +12,12 @@ export default function Burn() {
         Burn to Earn (Coming Soon)
       </h1>
       <p className="text-center max-w-2xl leading-relaxed">
-        The Burn to Earn feature lets you destroy your $TIX in exchange for jackpot entries. 
-        Each $1 burned (based on the current $TIX price) earns you entries at a <span className="font-bold">2:1 cost</span> — 
-        meaning you’ll need to burn <span className="font-bold">$2 worth of $TIX</span> to earn 1 entry.
+        The Burn to Earn feature lets you destroy your TIX in exchange for jackpot entries. 
+        Each $1 burned (based on the current TIX price) earns you entries at a <span className="font-bold">2:1 cost</span> — 
+        meaning you’ll need to burn <span className="font-bold">$2 worth of TIX</span> to earn 1 entry.
         <br /><br />
         Burn entries are subject to a <span className="font-bold">weekly cap</span> to maintain fairness and balance. 
-        All burned tokens are permanently destroyed, making $TIX more scarce and increasing its long-term value.
+        All burned tokens are permanently destroyed, making TIX more scarce and increasing its long-term value.
         <br /><br />
         This deflationary mechanic is coming soon. Stay tuned!
       </p>

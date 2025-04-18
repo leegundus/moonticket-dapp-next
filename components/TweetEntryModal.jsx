@@ -9,7 +9,7 @@ export default function TweetEntryModal({ isOpen, onClose, isBonus = false }) {
   const [message, setMessage] = useState('');
 
   const tweetText = encodeURIComponent(
-    `I got my $TIX to the moon for this week, go get yours!\nhttps://moonticket.io #Moonticket #Solana #TIX ${isBonus ? '#bonustix' : '#freetix'}`
+    `I got my TIX to the moon for this week, go get yours!\nhttps://moonticket.io #Moonticket #Solana #TIX ${isBonus ? '#bonustix' : '#freetix'}`
   );
   const tweetLink = `https://twitter.com/intent/tweet?text=${tweetText}`;
 

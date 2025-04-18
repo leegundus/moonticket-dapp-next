@@ -207,7 +207,7 @@ export default function BuyTix() {
                 <p>Success! You bought {result.tixAmount.toLocaleString()} TIX</p>
                 <p>using {result.solAmount} SOL (~${result.usdSpent.toFixed(2)} USD).</p>
                 <p>
-                  Rate: ${result.tixPriceUsd?.toFixed(5)} per $TIX | SOL: ${result.solPriceUsd?.toFixed(2)}
+                  Rate: ${result.tixPriceUsd?.toFixed(5)} per TIX | SOL: ${result.solPriceUsd?.toFixed(2)}
                 </p>
               </div>
 
@@ -245,6 +245,9 @@ export default function BuyTix() {
           onClick={() => window.location.reload()}
         />
       )}
+    <p className="text-xs text-yellow-300 mt-10">
+      No purchase neccessary to enter or win.  See Jackpot page for details.
+    </p> 
     </div>
   );
 }

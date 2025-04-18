@@ -8,7 +8,7 @@ export default function Staking() {
       />
       <h1 className="text-3xl font-bold mb-4">Staking (Coming Soon)</h1>
       <p className="mb-6 max-w-xl">
-        Stake your $TIX and earn passive rewards based on your commitment! Moonticket staking offers
+        Stake your TIX and earn passive rewards based on your commitment! Moonticket staking offers
         three tiers with escalating APYs depending on lock-up duration:
       </p>
 
@@ -19,7 +19,7 @@ export default function Staking() {
       </div>
 
       <p className="max-w-xl">
-        Rewards will be distributed in $TIX. Early withdrawals may forfeit rewards.
+        Rewards will be distributed in TIX. Early withdrawals may forfeit rewards.
         This feature is under development — check back soon for the official staking launch!
       </p>
     </div>
