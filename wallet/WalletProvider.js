@@ -7,7 +7,7 @@ import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 
 require("@solana/wallet-adapter-react-ui/styles.css");
 
-const endpoint = "https://api.mainnet-beta.solana.com";
+const endpoint = "https://mainnet.helius-rpc.com/?api-key=47d9c64e-1d5a-4623-abaf-ee532aca9eaa";
 
 const dynamicWalletProvider = (component) => {
   return (
