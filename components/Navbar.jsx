@@ -35,6 +35,9 @@ const Navbar = () => {
         {/* Wallet + Hamburger */}
         <div className="flex items-center space-x-4">
           <WalletConnect />
+          <p className="text-xs text-yellow-300 mt-1 text-center">
+            Only <strong>Phantom Wallet</strong> is supported
+          </p>
           <div className="md:hidden">
             <button onClick={() => setIsOpen(!isOpen)} className="focus:outline-none z-50 relative">
               <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
