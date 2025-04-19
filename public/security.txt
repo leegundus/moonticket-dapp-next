@@ -1,0 +1,4 @@
+Contact: https://moonticket.io/contact
+Policy: https://moonticket.io/security-policy
+Preferred-Languages: en
+Canonical: https://moonticket.io/.well-known/security.txt
