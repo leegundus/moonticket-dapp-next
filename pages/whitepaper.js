@@ -103,7 +103,7 @@ export default function Whitepaper() {
         <h2 className="text-2xl font-semibold text-center mb-4 mt-12">Token & Contract Info</h2>
         <ul className="list-disc list-inside space-y-1">
           <li><strong>TIX Mint Address:</strong> 8e9Mqnczw7MHjdjYaRe3tppbXgRdT6bqTyR3n8b4C4Ek</li>
-          <li><strong>Jackpot Smart Contract:</strong> Address goes here</li>
+          <li><strong>Jackpot Smart Contract:</strong> GmyMFG4QwHh2YK4bjy489eBzf9Hzf3BLZ1sFfznoeWpB</li>
           <li>All smart contracts and tokens are deployed on Solana mainnet.</li>
         </ul>
       </div>
