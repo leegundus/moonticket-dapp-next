@@ -120,8 +120,7 @@ export default function BuyTix() {
       tx.recentBlockhash = blockhash.blockhash;
       tx.feePayer = publicKey;
 
-      const signedTx = await signTransaction(tx);
-      const txid = await connection.sendRawTransaction(signedTx.serialize());
+      const txid = await window.solana.signAndSendTransaction(tx);
       await connection.confirmTransaction(txid, "confirmed");
 
       const res = await fetch("/api/buyTix", {
