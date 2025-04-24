@@ -27,12 +27,14 @@ export default function useEntries(publicKey) {
 
         const purchaseEntries = data.purchaseEntries || 0;
         const tweetEntries = data.tweetEntries || 0;
+        const promoEntries = data.promoEntries || 0;
 
         setEntries({
           weeklyTix: data.weeklyTix,
           purchaseEntries,
           tweetEntries,
-          weeklyEntries: purchaseEntries + tweetEntries,
+          promoEntries,
+          weeklyEntries: purchaseEntries + tweetEntries + promoEntries,
         });
       } catch (err) {
         console.error("Failed to load user entries:", err.message);

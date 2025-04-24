@@ -53,6 +53,7 @@ export default async function handler(req, res) {
     let weeklyTix = 0;
     let purchaseEntries = 0;
     let tweetEntries = 0;
+    let promoEntries = 0;
 
     for (const entry of filtered) {
       if (entry.entry_type === "purchase") {
@@ -60,15 +61,18 @@ export default async function handler(req, res) {
         purchaseEntries += entry.entries;
       } else if (entry.entry_type === "tweet") {
         tweetEntries += entry.entries;
+      } else if (entry.entry_type === "promo") {
+        promoEntries += entry.entries;
       }
     }
 
-    const weeklyEntries = purchaseEntries + tweetEntries;
+    const weeklyEntries = purchaseEntries + tweetEntries + promoEntries;
 
     res.status(200).json({
       weeklyTix,
       purchaseEntries,
       tweetEntries,
+      promoEntries,
       weeklyEntries,
       debug: {
         drawSince: since?.toISOString() || null,

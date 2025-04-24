@@ -21,7 +21,7 @@ export default function Jackpot() {
   const entries = entryData?.weeklyEntries || 0;
   const purchaseEntries = entryData?.purchaseEntries || 0;
   const tweetEntries = entryData?.tweetEntries || 0;
-
+  const promoEntries = entryData?.promoEntries || 0;
   const jackpotSol = jackpot?.jackpotSol || 0;
   const jackpotUsd = jackpotSol * solPrice;
 
@@ -54,7 +54,7 @@ export default function Jackpot() {
   }, []);
 
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-6 flex flex-col items-center text-center pt-40">
+    <div className="bg-black text-yellow-400 min-h-[100dvh] flex flex-col items-center text-center pt-40 pb-0 overflow-hidden">
       <h1 className="text-3xl font-bold mb-6">Moonticket Jackpot</h1>
 
       <div className="mb-6">
@@ -75,7 +75,7 @@ export default function Jackpot() {
           <div className="mb-6">
           <h2 className="text-xl font-semibold mb-2">Your Info This Week</h2>
           <p><strong>TIX Purchased:</strong> {weeklyTix.toLocaleString()} TIX</p>
-          <p><strong>Your Entries:</strong> {entries.toFixed(2)} (Purchased: {purchaseEntries.toFixed(2)}, Tweets: {tweetEntries})</p>
+          <p><strong>Your Entries:</strong> {entries.toFixed(2)} (Purchased: {purchaseEntries.toFixed(2)}, Tweet + Promo: {(tweetEntries + promoEntries).toFixed(2)})</p>
           <hr className="my-4 border-yellow-400 w-full max-w-md sm:max-w-lg md:max-w-2x1 mx-auto" />
           <h3 className="text-lg font-semibold mb-2">Wallet Balances</h3>
           <p><strong>TIX:</strong> {tixBalance?.toLocaleString()} TIX</p>
