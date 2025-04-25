@@ -22,4 +22,4 @@ const WalletWrapper = ({ children }) => {
   );
 };
 
-export default WalletWrapper;
+export default WalletProvider;
