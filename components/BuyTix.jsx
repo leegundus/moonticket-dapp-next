@@ -141,7 +141,7 @@ export default function BuyTix() {
 
     setLoading(false);
 
-    // Fire Google Ads conversion event
+    {/* Fire Google Ads conversion event */}
     if (typeof window !== 'undefined' && window.gtag) {
       window.gtag('event', 'conversion', {
         send_to: 'AW-17029981561/Bt7VCP6hzb0aEPnKw7g_',
