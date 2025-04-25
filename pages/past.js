@@ -25,8 +25,19 @@ export default function PastDrawings() {
             <li key={draw.id} className="border p-4 border-yellow-600 rounded max-w-full overflow-hidden">
               <p><strong>Date:</strong> {new Date(draw.draw_date).toLocaleString()}</p>
               <p className="break-all"><strong>Winner:</strong> {draw.rolled_over ? "None (Rolled Over)" : draw.winner}</p>
-              <p><strong>Jackpot:</strong> {draw.jackpot_sol} SOL</p>
+              <p><strong>Jackpot:</strong> {(draw.jackpot_sol * 0.8).toFixed(2)} SOL</p>
               <p><strong>Entries:</strong> {draw.entries}</p>
+              <p>
+                <strong>Transaction:<strong>{" "}
+                <a
+                  href={`https://solscan.io/tx/${draw.tx_signature}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-400 break-all"
+                >
+                  View on Solscan
+                </a>
+              </p>
             </li>
           ))}
         </ul>
