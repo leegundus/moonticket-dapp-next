@@ -16,7 +16,7 @@ export default function BuyTix() {
   const [entries, setEntries] = useState(0);
   const [showBonusModal, setShowBonusModal] = useState(false);
   const [pricesLoaded, setPricesLoaded] = useState(false);
-  const [showReload, setShowReload] = useState(false); // NEW
+  const [showReload, setShowReload] = useState(false);
 
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
   const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
