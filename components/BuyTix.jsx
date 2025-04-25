@@ -78,7 +78,7 @@ export default function BuyTix() {
     }
   }, [solInput, solPriceUsd, tixPriceUsd]);
 
-  // NEW: Show reload button if Phantom is connected but publicKey not ready
+  {/* Show reload button if Phantom is connected but publicKey not ready */}
   useEffect(() => {
     const checkReloadStatus = () => {
       if (typeof window !== "undefined" && window.solana?.isConnected && !publicKey) {
