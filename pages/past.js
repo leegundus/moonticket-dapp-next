@@ -14,7 +14,8 @@ export default function PastDrawings() {
   }, []);
 
   return (
-    <div className="bg-black text-yellow-400 min-h-screen px-6 pt-40 pb-6 overflow-x-hidden">
+    <div className="flex flex-col min-h-screen bg-black text-yellow-400 min-h-screen overflow-x-hidden">
+      <main className="flex-grow px-6 pt-40">
       <h1 className="text-2xl font-bold mb-4">Past Drawings</h1>
 
       {draws.length === 0 ? (
@@ -42,6 +43,7 @@ export default function PastDrawings() {
           ))}
         </ul>
       )}
+      </main>
     </div>
   );
 }
