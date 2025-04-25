@@ -28,7 +28,7 @@ export default function PastDrawings() {
               <p><strong>Jackpot:</strong> {(draw.jackpot_sol * 0.8).toFixed(2)} SOL</p>
               <p><strong>Entries:</strong> {draw.entries}</p>
               <p>
-                <strong>Transaction:<strong>{" "}
+                <strong>Transaction:</strong>{" "}
                 <a
                   href={`https://solscan.io/tx/${draw.tx_signature}`}
                   target="_blank"
