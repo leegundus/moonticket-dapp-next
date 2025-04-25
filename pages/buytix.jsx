@@ -1,5 +1,3 @@
-// pages/buytix.js
-
 import dynamic from "next/dynamic";
 import dynamicWalletProvider from "../wallet/WalletProvider";
 
