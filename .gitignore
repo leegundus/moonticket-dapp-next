@@ -32,3 +32,7 @@ firebase-debug.log
 target/
 test-ledger/
 programs/**/*.keypair.json
+**/admin.json
+**/founder.json
+**/treasury.json
+**/user*.json
