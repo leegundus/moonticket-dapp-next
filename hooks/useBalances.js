@@ -9,7 +9,7 @@ import {
 import { useWallet } from "@solana/wallet-adapter-react";
 
 const TIX_MINT_ADDRESS = new PublicKey("8e9Mqnczw7MHjdjYaRe3tppbXgRdT6bqTyR3n8b4C4Ek"); // your latest $TIX mint
-const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=47d9c64e-1d5a-4623-abaf-ee532aca9eaa");
+const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
 
 export default function useBalances() {
   const { publicKey } = useWallet();
