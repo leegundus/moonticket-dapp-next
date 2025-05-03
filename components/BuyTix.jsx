@@ -98,7 +98,7 @@ export default function BuyTix() {
     setResult(null);
 
     try {
-      const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=47d9c64e-1d5a-4623-abaf-ee532aca9eaa");
+      const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
       const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
       const opsLamports = Math.floor(totalLamports * 0.01);
       const treasuryLamports = totalLamports - opsLamports;
