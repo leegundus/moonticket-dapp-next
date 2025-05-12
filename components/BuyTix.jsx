@@ -253,7 +253,7 @@ export default function BuyTix() {
         />
       )}
     <p className="text-xs text-yellow-300 mt-10">
-      No purchase neccessary to enter or win.  See Jackpot page for details.
+      No purchase necessary to enter or win.  See Jackpot page for details.
     </p> 
     </div>
   );
