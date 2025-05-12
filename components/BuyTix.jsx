@@ -78,7 +78,6 @@ export default function BuyTix() {
     }
   }, [solInput, solPriceUsd, tixPriceUsd]);
 
-  {/* Show reload button if Phantom is connected but publicKey not ready */}
   useEffect(() => {
     const checkReloadStatus = () => {
       if (typeof window !== "undefined" && window.solana?.isConnected && !publicKey) {
@@ -120,7 +119,8 @@ export default function BuyTix() {
       tx.recentBlockhash = blockhash.blockhash;
       tx.feePayer = publicKey;
 
-      const txid = await window.solana.signAndSendTransaction(tx);
+      const signedTx = await signTransaction(tx);
+      const txid = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txid, "confirmed");
 
       const res = await fetch("/api/buyTix", {
@@ -141,13 +141,12 @@ export default function BuyTix() {
 
     setLoading(false);
 
-    {/* Fire Google Ads conversion event */}
     if (typeof window !== 'undefined' && window.gtag) {
       window.gtag('event', 'conversion', {
         send_to: 'AW-17029981561/Bt7VCP6hzb0aEPnKw7g_',
         transaction_id: ''
-    });
-   }
+      });
+    }
   };
 
   return (
@@ -198,24 +197,24 @@ export default function BuyTix() {
               <p><strong>Entries earned:</strong> {entries.toFixed(2)}</p>
             </div>
           )}
-    {(!loading && pricesLoaded) ? (
-    <img
-      src="/buyTix-button.png"
-      alt="Buy $TIX"
-      onClick={handleBuy}
-      className="mx-auto mt-4 w-64 h-auto cursor-pointer hover:scale-105 transition"
-    />
-  ) : (
-    <p className="mt-4 text-yellow-400">Loading...</p>
-  )}
+
+          {(!loading && pricesLoaded) ? (
+            <img
+              src="/buyTix-button.png"
+              alt="Buy $TIX"
+              onClick={handleBuy}
+              className="mx-auto mt-4 w-64 h-auto cursor-pointer hover:scale-105 transition"
+            />
+          ) : (
+            <p className="mt-4 text-yellow-400">Loading...</p>
+          )}
+
           {result && result.success && (
             <>
               <div className="mt-4 text-green-400">
                 <p>Success! You bought {result.tixAmount.toLocaleString()} TIX</p>
                 <p>using {result.solAmount} SOL (~${result.usdSpent.toFixed(2)} USD).</p>
-                <p>
-                  Rate: ${result.tixPriceUsd?.toFixed(5)} per TIX | SOL: ${result.solPriceUsd?.toFixed(2)}
-                </p>
+                <p>Rate: ${result.tixPriceUsd?.toFixed(5)} per TIX | SOL: ${result.solPriceUsd?.toFixed(2)}</p>
               </div>
 
               <div className="mt-6 text-center">
@@ -252,9 +251,10 @@ export default function BuyTix() {
           onClick={() => window.location.reload()}
         />
       )}
-    <p className="text-xs text-yellow-300 mt-10">
-      No purchase necessary to enter or win.  See Jackpot page for details.
-    </p> 
+
+      <p className="text-xs text-yellow-300 mt-10">
+        No purchase necessary to enter or win. See Jackpot page for details.
+      </p>
     </div>
   );
 }
