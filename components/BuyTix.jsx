@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 import TweetEntryModal from "./TweetEntryModal";
 
 export default function BuyTix() {
@@ -20,6 +21,7 @@ export default function BuyTix() {
 
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
   const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
+  const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 
   useEffect(() => {
     const hasReloaded = sessionStorage.getItem("walletReloaded");
@@ -122,6 +124,9 @@ export default function BuyTix() {
       const signedTx = await signTransaction(tx);
       const txid = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txid, "confirmed");
+
+      // 🔍 Log the Treasury ATA for debugging
+      const treasuryATA = await getAssociatedTokenAddress(TIX_MINT, TREASURY_WALLET);
 
       const res = await fetch("/api/buyTix", {
         method: "POST",

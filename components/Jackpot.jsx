@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import CheckInButton from "./CheckInButton";
 import useBalances from "../hooks/useBalances";
 import useJackpotData from "../hooks/useJackpotData";
 import useCountdown from "../hooks/useCountdown";
@@ -80,6 +81,11 @@ export default function Jackpot() {
           <h3 className="text-lg font-semibold mb-2">Wallet Balances</h3>
           <p><strong>TIX:</strong> {tixBalance?.toLocaleString()} TIX</p>
           <p><strong>SOL:</strong> {Number(solBalance)?.toFixed(4)} SOL</p>
+
+          {/* Add Check-In Button Here */}
+          <div className="mt-4">
+            <CheckInButton />
+          </div>
         </div>
       ) : (
         <>

@@ -34,7 +34,7 @@ const Navbar = () => {
         {/* Wallet + Icons + Hamburger */}
         <div className="flex items-center space-x-4">
           {/* Social Icons */}
-          <a href="https://x.com/moonticket_io" target="_blank" rel="noopener noreferrer" aria-label="X">
+          <a href="https://x.com/moonticket__io" target="_blank" rel="noopener noreferrer" aria-label="X">
             <img src="/logo-white.png" alt="X Icon" className="w-5 h-5" />
           </a>
           <a href="https://t.me/moonticket_chat" target="_blank" rel="noopener noreferrer" aria-label="Telegram">
