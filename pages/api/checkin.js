@@ -91,7 +91,7 @@ export default async function handler(req, res) {
         rewardsKeypair.publicKey, // payer
         userATA,
         userWallet,
-        TIX_MINT
+        TIX_MINT,
         TOKEN_PROGRAM_ID
       )
     );
