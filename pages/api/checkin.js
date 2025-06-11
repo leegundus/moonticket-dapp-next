@@ -12,6 +12,7 @@ import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
   TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import base58 from 'bs58';
 
@@ -77,8 +78,20 @@ export default async function handler(req, res) {
 
   const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
   const rewardsKeypair = Keypair.fromSecretKey(base58.decode(REWARDS_SECRET));
-  const rewardsATA = await getAssociatedTokenAddress(TIX_MINT, rewardsKeypair.publicKey, false, TOKEN_PROGRAM_ID);
-  const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet, false, TOKEN_PROGRAM_ID);
+  const rewardsATA = await getAssociatedTokenAddress(
+    TIX_MINT,
+    rewardsKeypair.publicKey,
+    false,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+  const userATA = await getAssociatedTokenAddress(
+    TIX_MINT,
+    userWallet,
+    false,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
 
   const ataInfo = await connection.getAccountInfo(userATA);
   const instructions = [];
@@ -90,7 +103,8 @@ export default async function handler(req, res) {
         userATA,
         userWallet,
         TIX_MINT,
-        TOKEN_PROGRAM_ID
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
       )
     );
   }
