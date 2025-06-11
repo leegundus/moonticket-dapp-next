@@ -20,8 +20,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const getRewardsPayer = require("@/lib/getRewardsPayer");
-const rewardsKeypair = getRewardsPayer();
 const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
 const REWARDS_SECRET = process.env.REWARDS_SECRET_KEY_BASE58;
 const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
@@ -79,8 +77,8 @@ export default async function handler(req, res) {
 
   const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
   const rewardsKeypair = Keypair.fromSecretKey(base58.decode(REWARDS_SECRET));
-  const rewardsATA = await getAssociatedTokenAddress(TIX_MINT, rewardsKeypair.publicKey);
-  const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet);
+  const rewardsATA = await getAssociatedTokenAddress(TIX_MINT, rewardsKeypair.publicKey, false, TOKEN_PROGRAM_ID);
+  const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet, false, TOKEN_PROGRAM_ID);
 
   const ataInfo = await connection.getAccountInfo(userATA);
   const instructions = [];
@@ -102,7 +100,9 @@ export default async function handler(req, res) {
       rewardsATA,
       userATA,
       rewardsKeypair.publicKey,
-      tixAmount
+      tixAmount,
+      [],
+      TOKEN_PROGRAM_ID
     )
   );
 
