@@ -92,6 +92,7 @@ export default async function handler(req, res) {
         userATA,
         userWallet,
         TIX_MINT
+        TOKEN_PROGRAM_ID
       )
     );
   }
