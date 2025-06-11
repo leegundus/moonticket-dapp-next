@@ -24,7 +24,15 @@ export default function CheckInButton() {
         body: JSON.stringify({ wallet: publicKey.toBase58() }),
       });
 
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (e) {
+        console.error("Failed to parse JSON from /api/checkin:", e);
+        setMessage("❌ Unexpected response from server.");
+        setLoading(false);
+        return;
+      }
 
       if (data.success) {
         setStreak(data.streak);
@@ -44,24 +52,24 @@ export default function CheckInButton() {
     setLoading(false);
   };
 
-useEffect(() => {
-  const fetchStatus = async () => {
-    if (!publicKey) return;
-    try {
-      const res = await fetch(`/api/checkin-status?wallet=${publicKey.toBase58()}`);
-      const data = await res.json();
-      if (data.alreadyCheckedIn) {
-        setAlreadyCheckedIn(true);
-        setStreak(data.streak);
-      } else if (data.streak) {
-        setStreak(data.streak);
+  useEffect(() => {
+    const fetchStatus = async () => {
+      if (!publicKey) return;
+      try {
+        const res = await fetch(`/api/checkin-status?wallet=${publicKey.toBase58()}`);
+        const data = await res.json();
+        if (data.alreadyCheckedIn) {
+          setAlreadyCheckedIn(true);
+          setStreak(data.streak);
+        } else if (data.streak) {
+          setStreak(data.streak);
+        }
+      } catch (e) {
+        console.error("Failed to fetch check-in status:", e.message);
       }
-    } catch (e) {
-      console.error("Failed to fetch check-in status:", e.message);
-    }
-  };
-  fetchStatus();
-}, [publicKey]);
+    };
+    fetchStatus();
+  }, [publicKey]);
 
   if (!publicKey) return null;
 
