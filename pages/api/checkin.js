@@ -11,8 +11,6 @@ import {
   getAccount,
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import base58 from 'bs58';
 
@@ -25,6 +23,10 @@ const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
 const REWARDS_SECRET = process.env.REWARDS_SECRET_KEY_BASE58;
 const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 const DECIMALS = 6;
+
+// ✅ Hardcoded Program IDs
+const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5zWH25efTNsLJA8knL");
 
 const rewards = [0, 50, 50, 100, 200, 300, 500, 1000]; // Index 1–7
 
@@ -99,10 +101,12 @@ export default async function handler(req, res) {
   if (!ataInfo) {
     instructions.push(
       createAssociatedTokenAccountInstruction(
-        rewardsKeypair.publicKey, // payer
+        rewardsKeypair.publicKey,
         userATA,
         userWallet,
-        TIX_MINT
+        TIX_MINT,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
       )
     );
   }
