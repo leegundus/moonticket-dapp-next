@@ -1,60 +1,74 @@
-import { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
+import {
+  Connection,
+  PublicKey,
+  Transaction,
+} from "@solana/web3.js";
+
+const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL;
 
 export default function CheckInButton() {
-  const { publicKey, signTransaction } = useWallet();
+  const { publicKey, sendTransaction } = useWallet();
   const [loading, setLoading] = useState(false);
-  const [alreadyCheckedIn, setAlreadyCheckedIn] = useState(false);
   const [streak, setStreak] = useState(null);
-  const [reward, setReward] = useState(null);
-  const [message, setMessage] = useState("");
+  const [tixAwarded, setTixAwarded] = useState(null);
+  const [alreadyCheckedIn, setAlreadyCheckedIn] = useState(false);
+  const [error, setError] = useState(null);
 
-  const rewards = [50, 50, 100, 200, 300, 500, 1000]; // Day 1–7
-  const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
-  const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL;
-
-  const ensureATAExists = async () => {
+  const ensureUserHasATA = async () => {
     const connection = new Connection(RPC_URL);
-    const ata = await getAssociatedTokenAddress(
+    const userATA = await getAssociatedTokenAddress(
       TIX_MINT,
       publicKey,
       false,
       TOKEN_PROGRAM_ID,
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
-    const accountInfo = await connection.getAccountInfo(ata);
+
+    const accountInfo = await connection.getAccountInfo(userATA);
     if (!accountInfo) {
-      const ix = createAssociatedTokenAccountInstruction(
+      console.log("🔧 Creating ATA for user:", userATA.toBase58());
+
+      const ataIx = createAssociatedTokenAccountInstruction(
         publicKey, // payer
-        ata,
-        publicKey, // owner
+        userATA,
+        publicKey,
         TIX_MINT,
         TOKEN_PROGRAM_ID,
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
-      const tx = new Transaction().add(ix);
+
+      const tx = new Transaction().add(ataIx);
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
-      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      const signed = await signTransaction(tx);
-      const txid = await connection.sendRawTransaction(signed.serialize());
-      await connection.confirmTransaction(txid, "confirmed");
+
+      const txSig = await sendTransaction(tx, connection);
+      await connection.confirmTransaction(txSig, "confirmed");
+
+      console.log("✅ ATA created:", txSig);
+    } else {
+      console.log("ℹ️ ATA already exists:", userATA.toBase58());
     }
   };
 
-  const checkIn = async () => {
+  const handleCheckIn = async () => {
     if (!publicKey) return;
     setLoading(true);
-    setMessage("");
+    setError(null);
+    setAlreadyCheckedIn(false);
+    setTixAwarded(null);
 
     try {
-      await ensureATAExists();
+      await ensureUserHasATA();
 
       const res = await fetch("/api/checkin", {
         method: "POST",
@@ -63,103 +77,54 @@ export default function CheckInButton() {
       });
 
       const data = await res.json();
+      console.log("🎯 Check-in response:", data);
 
-      if (data.success) {
-        setStreak(data.streak);
-        setReward(data.tixAwarded);
-        setMessage(`✅ Successfully checked in! You earned ${data.tixAwarded} TIX.`);
+      if (data.alreadyCheckedIn) {
         setAlreadyCheckedIn(true);
-      } else if (data.alreadyCheckedIn) {
-        setAlreadyCheckedIn(true);
+      } else if (data.success) {
         setStreak(data.streak);
+        setTixAwarded(data.tixAwarded);
       } else {
-        setMessage("❌ Something went wrong. Try again.");
+        setError(data.error || "Check-in failed.");
       }
-    } catch (e) {
-      setMessage("❌ Error: " + e.message);
+    } catch (err) {
+      console.error("❌ Check-in error:", err);
+      setError("Unexpected error occurred.");
     }
 
     setLoading(false);
   };
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      if (!publicKey) return;
-      try {
-        const res = await fetch(`/api/checkin-status?wallet=${publicKey.toBase58()}`);
-        const data = await res.json();
-        if (data.alreadyCheckedIn) {
-          setAlreadyCheckedIn(true);
-          setStreak(data.streak);
-        } else if (data.streak) {
-          setStreak(data.streak);
-        }
-      } catch (e) {
-        console.error("Failed to fetch check-in status:", e.message);
-      }
-    };
-    fetchStatus();
-  }, [publicKey]);
-
-  if (!publicKey) return null;
-
   return (
-    <div className="mt-4 text-center">
-      {streak !== null && (
-        <p className="mb-2 text-sm text-white">
-          {alreadyCheckedIn
-            ? reward
-              ? `✅ Successfully checked in! +${reward} TIX (Day ${streak})`
-              : `✅ Checked in today! Streak: Day ${streak}`
-            : streak > 1
-              ? `🔥 Current Streak: Day ${streak} — Don’t miss today!`
-              : null}
-        </p>
+    <div className="text-center mt-6">
+      {!publicKey ? (
+        <p className="text-yellow-400">Connect your wallet to check in.</p>
+      ) : (
+        <>
+          <button
+            onClick={handleCheckIn}
+            disabled={loading}
+            className="bg-yellow-400 text-black px-6 py-2 rounded hover:scale-105 transition font-semibold"
+          >
+            {loading ? "Checking in..." : "Daily Check-In"}
+          </button>
+
+          {alreadyCheckedIn && (
+            <p className="mt-3 text-yellow-300">You’ve already checked in today.</p>
+          )}
+
+          {tixAwarded && (
+            <p className="mt-3 text-green-400">
+              ✅ Check-in complete! You earned {tixAwarded} TIX (Streak: {streak} day{streak > 1 ? "s" : ""})
+            </p>
+          )}
+
+          {error && (
+            <p className="mt-3 text-red-400">Error: {error}</p>
+          )}
+        </>
       )}
-
-      <div className="mb-1 text-xs flex justify-center gap-2 text-white">
-        {rewards.map((_, index) => (
-          <div key={index} className="w-10 text-center">
-            Day {index + 1}
-          </div>
-        ))}
-      </div>
-
-      <div className="text-white text-xs mb-1 font-semibold">TIX Earned</div>
-
-      <div className="flex gap-2 justify-center mb-4">
-        {rewards.map((amount, index) => {
-          const isChecked = alreadyCheckedIn && streak > index;
-          return (
-            <div
-              key={index}
-              className={`w-10 h-10 rounded text-xs flex items-center justify-center font-bold border ${
-                isChecked
-                  ? "bg-yellow-400 text-black border-yellow-500"
-                  : "bg-gray-800 text-white border-gray-600"
-              }`}
-            >
-              {amount}
-            </div>
-          );
-        })}
-      </div>
-
-      <button
-        onClick={checkIn}
-        disabled={loading || alreadyCheckedIn}
-        className={`bg-yellow-400 text-black font-bold py-2 px-4 rounded hover:bg-yellow-300 ${
-          alreadyCheckedIn ? "opacity-50 cursor-not-allowed" : ""
-        }`}
-      >
-        {loading
-          ? "Checking in..."
-          : alreadyCheckedIn
-          ? "Checked In"
-          : "Daily Check-In (+TIX)"}
-      </button>
-
-      {message && <p className="mt-2 text-sm text-white">{message}</p>}
     </div>
   );
 }
+
