@@ -76,6 +76,7 @@ export default async function handler(req, res) {
 
   const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
   const rewardsKeypair = Keypair.fromSecretKey(base58.decode(REWARDS_SECRET));
+
   const rewardsATA = await getAssociatedTokenAddress(
     TIX_MINT,
     rewardsKeypair.publicKey,
@@ -91,9 +92,14 @@ export default async function handler(req, res) {
     ASSOCIATED_TOKEN_PROGRAM_ID
   );
 
-  const instructions = [];
+  // ✅ Debug logging
+  console.log("✅ TOKEN_PROGRAM_ID:", TOKEN_PROGRAM_ID.toBase58());
+  console.log("✅ ASSOCIATED_TOKEN_PROGRAM_ID:", ASSOCIATED_TOKEN_PROGRAM_ID.toBase58());
+  console.log("✅ rewardsATA:", rewardsATA.toBase58());
+  console.log("✅ userATA:", userATA.toBase58());
+  console.log("✅ streak:", streak, "→ awarding", rewards[streak], "TIX");
 
-  instructions.push(
+  const instructions = [
     createTransferInstruction(
       rewardsATA,
       userATA,
@@ -102,7 +108,7 @@ export default async function handler(req, res) {
       [],
       TOKEN_PROGRAM_ID
     )
-  );
+  ];
 
   try {
     const tx = new Transaction().add(...instructions);
@@ -131,3 +137,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Transfer failed', detail: e.message });
   }
 }
+
