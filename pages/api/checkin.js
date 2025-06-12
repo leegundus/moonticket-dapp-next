@@ -10,6 +10,7 @@ import {
   getAssociatedTokenAddress,
   createTransferInstruction,
   TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import base58 from 'bs58';
 
@@ -75,27 +76,38 @@ export default async function handler(req, res) {
 
   const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
   const rewardsKeypair = Keypair.fromSecretKey(base58.decode(REWARDS_SECRET));
-  const rewardsATA = await getAssociatedTokenAddress(TIX_MINT, rewardsKeypair.publicKey);
-  const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet);
+  const rewardsATA = await getAssociatedTokenAddress(
+    TIX_MINT,
+    rewardsKeypair.publicKey,
+    false,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+  const userATA = await getAssociatedTokenAddress(
+    TIX_MINT,
+    userWallet,
+    false,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
 
-  const userAtaInfo = await connection.getAccountInfo(userATA);
-  if (!userAtaInfo) {
-    return res.status(400).json({ error: "User does not have TIX ATA. Must purchase TIX first." });
-  }
+  const instructions = [];
+
+  instructions.push(
+    createTransferInstruction(
+      rewardsATA,
+      userATA,
+      rewardsKeypair.publicKey,
+      tixAmount,
+      [],
+      TOKEN_PROGRAM_ID
+    )
+  );
 
   try {
-    const tx = new Transaction().add(
-      createTransferInstruction(
-        rewardsATA,
-        userATA,
-        rewardsKeypair.publicKey,
-        tixAmount,
-        [],
-        TOKEN_PROGRAM_ID
-      )
-    );
-
+    const tx = new Transaction().add(...instructions);
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
     tx.recentBlockhash = blockhash;
     tx.feePayer = rewardsKeypair.publicKey;
     tx.sign(rewardsKeypair);

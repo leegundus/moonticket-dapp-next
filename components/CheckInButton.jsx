@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import {
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 
 export default function CheckInButton() {
-  const { publicKey } = useWallet();
+  const { publicKey, signTransaction } = useWallet();
   const [loading, setLoading] = useState(false);
   const [alreadyCheckedIn, setAlreadyCheckedIn] = useState(false);
   const [streak, setStreak] = useState(null);
@@ -10,29 +17,52 @@ export default function CheckInButton() {
   const [message, setMessage] = useState("");
 
   const rewards = [50, 50, 100, 200, 300, 500, 1000]; // Day 1–7
+  const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
+  const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL;
+
+  const ensureATAExists = async () => {
+    const connection = new Connection(RPC_URL);
+    const ata = await getAssociatedTokenAddress(
+      TIX_MINT,
+      publicKey,
+      false,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    const accountInfo = await connection.getAccountInfo(ata);
+    if (!accountInfo) {
+      const ix = createAssociatedTokenAccountInstruction(
+        publicKey, // payer
+        ata,
+        publicKey, // owner
+        TIX_MINT,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      const tx = new Transaction().add(ix);
+      tx.feePayer = publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      const signed = await signTransaction(tx);
+      const txid = await connection.sendRawTransaction(signed.serialize());
+      await connection.confirmTransaction(txid, "confirmed");
+    }
+  };
 
   const checkIn = async () => {
     if (!publicKey) return;
-
     setLoading(true);
     setMessage("");
 
     try {
+      await ensureATAExists();
+
       const res = await fetch("/api/checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wallet: publicKey.toBase58() }),
       });
 
-      let data = {};
-      try {
-        data = await res.json();
-      } catch (e) {
-        console.error("Failed to parse JSON from /api/checkin:", e);
-        setMessage("❌ Unexpected response from server.");
-        setLoading(false);
-        return;
-      }
+      const data = await res.json();
 
       if (data.success) {
         setStreak(data.streak);
@@ -75,7 +105,6 @@ export default function CheckInButton() {
 
   return (
     <div className="mt-4 text-center">
-      {/* ✅ Status Message */}
       {streak !== null && (
         <p className="mb-2 text-sm text-white">
           {alreadyCheckedIn
@@ -88,7 +117,6 @@ export default function CheckInButton() {
         </p>
       )}
 
-      {/* ✅ Streak Labels */}
       <div className="mb-1 text-xs flex justify-center gap-2 text-white">
         {rewards.map((_, index) => (
           <div key={index} className="w-10 text-center">
@@ -97,10 +125,8 @@ export default function CheckInButton() {
         ))}
       </div>
 
-      {/* ✅ TIX Earned Label */}
       <div className="text-white text-xs mb-1 font-semibold">TIX Earned</div>
 
-      {/* ✅ Reward Tracker */}
       <div className="flex gap-2 justify-center mb-4">
         {rewards.map((amount, index) => {
           const isChecked = alreadyCheckedIn && streak > index;
@@ -119,7 +145,6 @@ export default function CheckInButton() {
         })}
       </div>
 
-      {/* ✅ Check-In Button */}
       <button
         onClick={checkIn}
         disabled={loading || alreadyCheckedIn}
@@ -134,7 +159,6 @@ export default function CheckInButton() {
           : "Daily Check-In (+TIX)"}
       </button>
 
-      {/* ✅ Confirmation Message */}
       {message && <p className="mt-2 text-sm text-white">{message}</p>}
     </div>
   );
