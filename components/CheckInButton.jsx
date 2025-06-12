@@ -8,6 +8,7 @@ export default function CheckInButton() {
   const [streak, setStreak] = useState(null);
   const [reward, setReward] = useState(null);
   const [message, setMessage] = useState("");
+  const [statusLoaded, setStatusLoaded] = useState(false);
 
   const rewards = [50, 50, 100, 200, 300, 500, 1000]; // Day 1–7
 
@@ -43,7 +44,6 @@ export default function CheckInButton() {
     setLoading(false);
   };
 
-  // ✅ Trigger check-in status once publicKey is ready
   useEffect(() => {
     const fetchStatus = async () => {
       if (!publicKey) return;
@@ -59,8 +59,11 @@ export default function CheckInButton() {
         } else if (data.streak) {
           setStreak(data.streak);
         }
+
+        setStatusLoaded(true);
       } catch (e) {
         console.error("❌ Failed to fetch check-in status:", e.message);
+        setStatusLoaded(true); // still allow rendering with fallback
       }
     };
 
@@ -69,7 +72,7 @@ export default function CheckInButton() {
     }
   }, [publicKey]);
 
-  if (!publicKey) return null;
+  if (!publicKey || !statusLoaded) return null;
 
   return (
     <div className="mt-4 text-center">
