@@ -8,6 +8,7 @@ import {
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
   createTransferInstruction,
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
@@ -78,18 +79,34 @@ export default async function handler(req, res) {
 
   const rewardsATA = await getAssociatedTokenAddress(TIX_MINT, rewardsKeypair.publicKey);
   const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet);
+  const userAccountInfo = await connection.getAccountInfo(userATA);
 
-  const instruction = createTransferInstruction(
-    rewardsATA,
-    userATA,
-    rewardsKeypair.publicKey,
-    tixAmount,
-    [],
-    TOKEN_PROGRAM_ID
+  const tx = new Transaction();
+
+  // ✅ If user ATA doesn't exist, rewards wallet pays to create it
+  if (!userAccountInfo) {
+    tx.add(
+      createAssociatedTokenAccountInstruction(
+        rewardsKeypair.publicKey, // payer
+        userATA,
+        userWallet,
+        TIX_MINT
+      )
+    );
+  }
+
+  tx.add(
+    createTransferInstruction(
+      rewardsATA,
+      userATA,
+      rewardsKeypair.publicKey,
+      tixAmount,
+      [],
+      TOKEN_PROGRAM_ID
+    )
   );
 
   try {
-    const tx = new Transaction().add(instruction);
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
 
     tx.recentBlockhash = blockhash;

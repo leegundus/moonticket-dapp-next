@@ -10,7 +10,7 @@ export default function CheckInButton() {
   const [message, setMessage] = useState("");
   const [statusLoaded, setStatusLoaded] = useState(false);
 
-  const rewards = [50, 50, 100, 200, 300, 500, 1000]; // Day 1–7
+  const rewards = [50, 50, 100, 200, 300, 500, 1000];
 
   const checkIn = async () => {
     if (!publicKey) return;
@@ -47,7 +47,6 @@ export default function CheckInButton() {
   useEffect(() => {
     const fetchStatus = async () => {
       if (!publicKey) return;
-      console.log("🔍 Fetching check-in status for:", publicKey.toBase58());
 
       try {
         const res = await fetch(`/api/checkin-status?wallet=${publicKey.toBase58()}`);
@@ -63,7 +62,7 @@ export default function CheckInButton() {
         setStatusLoaded(true);
       } catch (e) {
         console.error("❌ Failed to fetch check-in status:", e.message);
-        setStatusLoaded(true); // still allow rendering with fallback
+        setStatusLoaded(true);
       }
     };
 
@@ -76,7 +75,6 @@ export default function CheckInButton() {
 
   return (
     <div className="mt-4 text-center">
-      {/* ✅ Status Message */}
       {streak !== null && (
         <p className="mb-2 text-sm text-white">
           {alreadyCheckedIn
@@ -89,19 +87,14 @@ export default function CheckInButton() {
         </p>
       )}
 
-      {/* ✅ Streak Labels */}
       <div className="mb-1 text-xs flex justify-center gap-2 text-white">
         {rewards.map((_, index) => (
-          <div key={index} className="w-10 text-center">
-            Day {index + 1}
-          </div>
+          <div key={index} className="w-10 text-center">Day {index + 1}</div>
         ))}
       </div>
 
-      {/* ✅ TIX Earned Label */}
       <div className="text-white text-xs mb-1 font-semibold">TIX Earned</div>
 
-      {/* ✅ Reward Tracker */}
       <div className="flex gap-2 justify-center mb-4">
         {rewards.map((amount, index) => {
           const isChecked = alreadyCheckedIn && streak > index;
@@ -120,7 +113,6 @@ export default function CheckInButton() {
         })}
       </div>
 
-      {/* ✅ Check-In Button */}
       <button
         onClick={checkIn}
         disabled={loading || alreadyCheckedIn}
@@ -135,7 +127,6 @@ export default function CheckInButton() {
           : "Daily Check-In (+TIX)"}
       </button>
 
-      {/* ✅ Confirmation Message */}
       {message && <p className="mt-2 text-sm text-white">{message}</p>}
     </div>
   );
