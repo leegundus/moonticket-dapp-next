@@ -9,6 +9,7 @@ export default function CheckInButton() {
   const [reward, setReward] = useState(null);
   const [message, setMessage] = useState("");
   const [statusLoaded, setStatusLoaded] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(null);
 
   const rewards = [50, 50, 100, 200, 300, 500, 1000];
 
@@ -31,6 +32,7 @@ export default function CheckInButton() {
         setReward(data.tixAwarded);
         setMessage(`✅ Successfully checked in! You earned ${data.tixAwarded} TIX.`);
         setAlreadyCheckedIn(true);
+        startCountdown(); // start new countdown
       } else if (data.alreadyCheckedIn) {
         setAlreadyCheckedIn(true);
         setStreak(data.streak);
@@ -44,6 +46,15 @@ export default function CheckInButton() {
     setLoading(false);
   };
 
+  const startCountdown = () => {
+    const now = new Date();
+    const tomorrowMidnight = new Date();
+    tomorrowMidnight.setUTCHours(24, 0, 0, 0); // midnight UTC next day
+    const diff = tomorrowMidnight - now;
+
+    setTimeLeft(diff > 0 ? diff : 0);
+  };
+
   useEffect(() => {
     const fetchStatus = async () => {
       if (!publicKey) return;
@@ -55,6 +66,7 @@ export default function CheckInButton() {
         if (data.alreadyCheckedIn) {
           setAlreadyCheckedIn(true);
           setStreak(data.streak);
+          startCountdown(); // countdown to tomorrow
         } else if (data.streak) {
           setStreak(data.streak);
         }
@@ -70,6 +82,29 @@ export default function CheckInButton() {
       fetchStatus();
     }
   }, [publicKey]);
+
+  // ⏳ Live countdown effect
+  useEffect(() => {
+    if (!timeLeft) return;
+
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => (prev > 1000 ? prev - 1000 : 0));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeLeft]);
+
+  const formatTime = (ms) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600)
+      .toString()
+      .padStart(2, "0");
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+      .toString()
+      .padStart(2, "0");
+    const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+    return `${hours}:${minutes}:${seconds}`;
+  };
 
   if (!publicKey || !statusLoaded) return null;
 
@@ -97,7 +132,7 @@ export default function CheckInButton() {
 
       <div className="flex gap-2 justify-center mb-4">
         {rewards.map((amount, index) => {
-          const isChecked = alreadyCheckedIn && streak > index;
+          const isChecked = streak > index;
           return (
             <div
               key={index}
@@ -126,6 +161,12 @@ export default function CheckInButton() {
           ? "Checked In"
           : "Daily Check-In (+TIX)"}
       </button>
+
+      {timeLeft > 0 && alreadyCheckedIn && streak < 7 && (
+        <p className="mt-2 text-sm text-white">
+          ⏳ Next check-in available in: {formatTime(timeLeft)}
+        </p>
+      )}
 
       {message && <p className="mt-2 text-sm text-white">{message}</p>}
     </div>
