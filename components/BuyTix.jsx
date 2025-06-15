@@ -18,6 +18,7 @@ export default function BuyTix() {
   const [showBonusModal, setShowBonusModal] = useState(false);
   const [pricesLoaded, setPricesLoaded] = useState(false);
   const [showReload, setShowReload] = useState(false);
+  const [solBalance, setSolBalance] = useState(null);
 
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
   const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
@@ -34,8 +35,20 @@ export default function BuyTix() {
   useEffect(() => {
     if (publicKey) {
       setWalletKey((prev) => prev + 1);
+      fetchSolBalance();
     }
   }, [publicKey]);
+
+  const fetchSolBalance = async () => {
+    if (!publicKey) return;
+    try {
+      const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
+      const balance = await connection.getBalance(publicKey);
+      setSolBalance(balance / 1e9);
+    } catch (err) {
+      console.error("Failed to fetch SOL balance:", err);
+    }
+  };
 
   useEffect(() => {
     const fetchPrices = async () => {
@@ -125,7 +138,6 @@ export default function BuyTix() {
       const txid = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txid, "confirmed");
 
-      // 🔍 Log the Treasury ATA for debugging
       const treasuryATA = await getAssociatedTokenAddress(TIX_MINT, TREASURY_WALLET);
 
       const res = await fetch("/api/buyTix", {
@@ -139,6 +151,7 @@ export default function BuyTix() {
 
       const data = await res.json();
       setResult(data);
+      fetchSolBalance(); // refresh balance after buy
     } catch (err) {
       console.error("Buy TIX failed:", err);
       setResult({ success: false, error: "Failed to buy TIX" });
@@ -179,6 +192,7 @@ export default function BuyTix() {
             Live SOL: {solPriceUsd ? `$${solPriceUsd.toFixed(2)}` : "Loading..."} |
             TIX: {tixPriceUsd ? `$${tixPriceUsd.toFixed(5)}` : "Loading..."}
           </p>
+          <p className="text-sm mt-1">SOL Balance: {solBalance !== null ? solBalance.toFixed(4) + " SOL" : "Loading..."}</p>
 
           <div className="my-4">
             <label>Enter SOL:</label>
