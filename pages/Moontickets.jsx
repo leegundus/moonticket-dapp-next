@@ -3,7 +3,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createTransferInstruction } from "@solana/spl-token";
 
-const TIX_MINT = new PublicKey("Your_TIX_Mint_Address");
+const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
 const TIX_PRICE_USD = 0.0001;
 const ENTRY_PRICE_USD = 1;
