@@ -4,12 +4,12 @@ import {
   PublicKey,
   Keypair,
   Transaction,
-  sendAndConfirmTransaction,
+  clusterApiUrl,
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
+  createMintToInstruction,
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import base58 from 'bs58';
@@ -19,8 +19,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
-const REWARDS_SECRET = process.env.REWARDS_SECRET_KEY_BASE58;
+const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl('mainnet-beta'));
+const MINT_AUTHORITY = Keypair.fromSecretKey(base58.decode(process.env.TIX_MINT_AUTHORITY_SECRET));
 const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 const DECIMALS = 6;
 
@@ -74,61 +74,56 @@ export default async function handler(req, res) {
     });
   }
 
-  const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
-  const rewardsKeypair = Keypair.fromSecretKey(base58.decode(REWARDS_SECRET));
+  try {
+    const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
+    const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet);
 
-  const rewardsATA = await getAssociatedTokenAddress(TIX_MINT, rewardsKeypair.publicKey);
-  const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet);
-  const userAccountInfo = await connection.getAccountInfo(userATA);
+    const tx = new Transaction();
 
-  const tx = new Transaction();
+    const ataInfo = await connection.getAccountInfo(userATA);
+    if (!ataInfo) {
+      tx.add(
+        createAssociatedTokenAccountInstruction(
+          userWallet,       // payer
+          userATA,
+          userWallet,
+          TIX_MINT
+        )
+      );
+    }
 
-  // ✅ If user ATA doesn't exist, rewards wallet pays to create it
-  if (!userAccountInfo) {
     tx.add(
-      createAssociatedTokenAccountInstruction(
-        rewardsKeypair.publicKey, // payer
+      createMintToInstruction(
+        TIX_MINT,
         userATA,
-        userWallet,
-        TIX_MINT
+        MINT_AUTHORITY.publicKey,
+        tixAmount,
+        [],
+        TOKEN_PROGRAM_ID
       )
     );
-  }
 
-  tx.add(
-    createTransferInstruction(
-      rewardsATA,
-      userATA,
-      rewardsKeypair.publicKey,
-      tixAmount,
-      [],
-      TOKEN_PROGRAM_ID
-    )
-  );
-
-  try {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
 
     tx.recentBlockhash = blockhash;
-    tx.feePayer = rewardsKeypair.publicKey;
-    tx.sign(rewardsKeypair);
+    tx.feePayer = userWallet;
 
-    const txSig = await sendAndConfirmTransaction(connection, tx, [rewardsKeypair], {
-      commitment: 'confirmed',
-      preflightCommitment: 'confirmed',
-      lastValidBlockHeight,
+    // Sign only the mintTo instruction with mint authority
+    tx.partialSign(MINT_AUTHORITY);
+
+    const serialized = tx.serialize({
+      requireAllSignatures: false,
     });
-
-    console.log("✅ Check-in transfer confirmed:", txSig);
 
     return res.status(200).json({
       success: true,
       streak,
       tixAwarded: rewards[streak],
-      txSig,
+      transaction: serialized.toString('base64'),
     });
+
   } catch (e) {
-    console.error("❌ TIX transfer failed:", e.message);
-    return res.status(500).json({ error: 'Transfer failed', detail: e.message });
+    console.error("❌ MintTo failed:", e.message);
+    return res.status(500).json({ error: 'Mint failed', detail: e.message });
   }
 }

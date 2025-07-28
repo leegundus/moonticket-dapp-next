@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { Transaction } from "@solana/web3.js";
 
 export default function CheckInButton() {
   const { publicKey } = useWallet();
@@ -14,7 +15,7 @@ export default function CheckInButton() {
   const rewards = [50, 50, 100, 200, 300, 500, 1000];
 
   const checkIn = async () => {
-    if (!publicKey) return;
+    if (!publicKey || !window.solana) return;
     setLoading(true);
     setMessage("");
 
@@ -27,12 +28,17 @@ export default function CheckInButton() {
 
       const data = await res.json();
 
-      if (data.success) {
+      if (data.success && data.transaction) {
+        const tx = Transaction.from(Buffer.from(data.transaction, "base64"));
+
+        const txSig = await window.solana.signAndSendTransaction(tx);
+
         setStreak(data.streak);
         setReward(data.tixAwarded);
         setMessage(`✅ Successfully checked in! You earned ${data.tixAwarded} TIX.`);
         setAlreadyCheckedIn(true);
-        startCountdown(); // start new countdown
+        startCountdown();
+        console.log("✅ Transaction sent:", txSig);
       } else if (data.alreadyCheckedIn) {
         setAlreadyCheckedIn(true);
         setStreak(data.streak);
@@ -40,6 +46,7 @@ export default function CheckInButton() {
         setMessage("❌ Something went wrong. Try again.");
       }
     } catch (e) {
+      console.error("❌ Check-in error:", e);
       setMessage("❌ Error: " + e.message);
     }
 
@@ -49,9 +56,8 @@ export default function CheckInButton() {
   const startCountdown = () => {
     const now = new Date();
     const tomorrowMidnight = new Date();
-    tomorrowMidnight.setUTCHours(24, 0, 0, 0); // midnight UTC next day
+    tomorrowMidnight.setUTCHours(24, 0, 0, 0);
     const diff = tomorrowMidnight - now;
-
     setTimeLeft(diff > 0 ? diff : 0);
   };
 
@@ -66,7 +72,7 @@ export default function CheckInButton() {
         if (data.alreadyCheckedIn) {
           setAlreadyCheckedIn(true);
           setStreak(data.streak);
-          startCountdown(); // countdown to tomorrow
+          startCountdown();
         } else if (data.streak) {
           setStreak(data.streak);
         }
@@ -83,7 +89,6 @@ export default function CheckInButton() {
     }
   }, [publicKey]);
 
-  // ⏳ Live countdown effect
   useEffect(() => {
     if (!timeLeft) return;
 
@@ -96,12 +101,8 @@ export default function CheckInButton() {
 
   const formatTime = (ms) => {
     const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600)
-      .toString()
-      .padStart(2, "0");
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-      .toString()
-      .padStart(2, "0");
+    const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
+    const minutes = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
     const seconds = (totalSeconds % 60).toString().padStart(2, "0");
     return `${hours}:${minutes}:${seconds}`;
   };
@@ -124,7 +125,9 @@ export default function CheckInButton() {
 
       <div className="mb-1 text-xs flex justify-center gap-2 text-white">
         {rewards.map((_, index) => (
-          <div key={index} className="w-10 text-center">Day {index + 1}</div>
+          <div key={index} className="w-10 text-center">
+            Day {index + 1}
+          </div>
         ))}
       </div>
 
