@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection, Transaction } from "@solana/web3.js";
 
-const connection = new Connection(RPC_URL);
+const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
 
 export default function CheckInButton({ streak, lastCheckin }) {
   const { publicKey, signTransaction } = useWallet();
@@ -27,14 +27,14 @@ export default function CheckInButton({ streak, lastCheckin }) {
       if (!res.ok) throw new Error(data.error || "Check-in failed");
 
       const tx = Transaction.from(Buffer.from(data.transaction, "base64"));
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      tx.feePayer = publicKey;
 
-      // DO NOT MODIFY tx to avoid Phantom malicious warning
       const signedTx = await signTransaction(tx);
       const txid = await connection.sendRawTransaction(signedTx.serialize());
       await connection.confirmTransaction(txid, "confirmed");
 
-      // Confirm in Supabase only after successful send
-      await fetch("/api/checkin-confirm", {
+      await fetch("/api/checkinConfirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -75,3 +75,4 @@ export default function CheckInButton({ streak, lastCheckin }) {
     </div>
   );
 }
+
