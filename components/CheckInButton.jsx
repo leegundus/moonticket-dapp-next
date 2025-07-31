@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection, Transaction } from "@solana/web3.js";
-import { TIX_MINT, RPC_URL } from "../lib/constants";
 
 const connection = new Connection(RPC_URL);
 
