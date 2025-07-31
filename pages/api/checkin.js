@@ -1,118 +1,83 @@
-import { createClient } from '@supabase/supabase-js';
-import {
-  Connection,
-  PublicKey,
-  Keypair,
-  Transaction,
-  clusterApiUrl,
-} from '@solana/web3.js';
-import {
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-  createMintToInstruction,
-  TOKEN_PROGRAM_ID,
-} from '@solana/spl-token';
-import base58 from 'bs58';
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createTransferInstruction } from "@solana/spl-token";
+import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl('mainnet-beta'));
-const MINT_AUTHORITY = Keypair.fromSecretKey(base58.decode(process.env.TIX_MINT_AUTHORITY_SECRET));
+const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
+const TREASURY_KEYPAIR = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.TREASURY_SECRET_KEY)));
 const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
-const DECIMALS = 6;
-
-const rewards = [0, 50, 50, 100, 200, 300, 500, 1000]; // Index 1–7
+const REWARD_AMOUNT = 250_000; // 250 TIX (6 decimals)
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { wallet } = req.body;
-  if (!wallet) return res.status(400).json({ error: 'Wallet address is required' });
+  if (!wallet) return res.status(400).json({ error: "Missing wallet" });
 
-  const userWallet = new PublicKey(wallet);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-
-  let streak = 1;
-  let alreadyCheckedIn = false;
-
-  const { data, error } = await supabase
-    .from('daily_checkins')
-    .select('*')
-    .eq('wallet', wallet)
-    .single();
-
-  if (error && error.code !== 'PGRST116') {
-    return res.status(500).json({ error: 'Database error', detail: error.message });
-  }
-
-  if (data) {
-    const lastCheck = new Date(data.last_checkin);
-    lastCheck.setUTCHours(0, 0, 0, 0);
-    const daysDiff = Math.floor((today - lastCheck) / (1000 * 60 * 60 * 24));
-
-    if (daysDiff === 1) {
-      streak = Math.min(data.streak_count + 1, 7);
-    } else if (daysDiff === 0) {
-      alreadyCheckedIn = true;
-    }
-  }
-
-  if (alreadyCheckedIn) {
-    return res.status(200).json({ alreadyCheckedIn: true, streak: data.streak_count });
-  }
+  const userPublicKey = new PublicKey(wallet);
 
   try {
-    const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
-    const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet);
-
-    const tx = new Transaction();
+    // 1. Check if user already has an ATA
+    const userATA = await getAssociatedTokenAddress(TIX_MINT, userPublicKey);
     const ataInfo = await connection.getAccountInfo(userATA);
+    
+    const instructions = [];
 
     if (!ataInfo) {
-      tx.add(
+      instructions.push(
         createAssociatedTokenAccountInstruction(
-          userWallet,       // payer (user pays for ATA)
+          TREASURY_KEYPAIR.publicKey, // payer
           userATA,
-          userWallet,
+          userPublicKey,
           TIX_MINT
         )
       );
     }
 
-    tx.add(
-      createMintToInstruction(
-        TIX_MINT,
+    // 2. Add TIX transfer
+    instructions.push(
+      createTransferInstruction(
+        await getAssociatedTokenAddress(TIX_MINT, TREASURY_KEYPAIR.publicKey),
         userATA,
-        MINT_AUTHORITY.publicKey,
-        tixAmount,
-        [],
-        TOKEN_PROGRAM_ID
+        TREASURY_KEYPAIR.publicKey,
+        REWARD_AMOUNT
       )
     );
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    tx.recentBlockhash = blockhash;
-    tx.feePayer = userWallet;
-    tx.partialSign(MINT_AUTHORITY);
+    const transaction = new Transaction().add(...instructions);
+    
+    // ✅ These two lines are critical to avoid Phantom "malicious" warning:
+    transaction.feePayer = userPublicKey;
+    transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
-    const serialized = tx.serialize({ requireAllSignatures: false });
-    const base64tx = serialized.toString('base64');
+    const serialized = transaction.serialize({ requireAllSignatures: false });
+    const base64Tx = serialized.toString("base64");
 
-    return res.status(200).json({
-      success: true,
-      streak,
-      tixAwarded: rewards[streak],
-      transaction: base64tx,
-      lastValidBlockHeight,
-    });
+    // (Optional) Lookup streak now to return with transaction
+    const { data: existing } = await supabase
+      .from("daily_checkins")
+      .select("streak_count, last_checkin")
+      .eq("wallet", wallet)
+      .single();
 
+    let streak = 1;
+    if (existing?.last_checkin) {
+      const last = new Date(existing.last_checkin);
+      const now = new Date();
+      const diff = now - last;
+      const oneDay = 1000 * 60 * 60 * 24;
+
+      if (diff < oneDay * 2) streak = existing.streak_count + 1;
+    }
+
+    return res.status(200).json({ transaction: base64Tx, streak });
   } catch (e) {
-    console.error("❌ MintTo failed:", e.message);
-    return res.status(500).json({ error: 'Mint failed', detail: e.message });
+    console.error("Check-in API error:", e);
+    return res.status(500).json({ error: "Transaction build failed", detail: e.message });
   }
 }
 
