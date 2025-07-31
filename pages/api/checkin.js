@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import {
   Connection,
   PublicKey,
-  Keypair,
   Transaction,
   clusterApiUrl,
 } from '@solana/web3.js';
@@ -12,7 +11,6 @@ import {
   createMintToInstruction,
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
-import base58 from 'bs58';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -20,7 +18,6 @@ const supabase = createClient(
 );
 
 const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl('mainnet-beta'));
-const MINT_AUTHORITY = Keypair.fromSecretKey(base58.decode(process.env.TIX_MINT_AUTHORITY_SECRET));
 const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 const DECIMALS = 6;
 
@@ -77,10 +74,10 @@ export default async function handler(req, res) {
   try {
     const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
     const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet);
+    const ataInfo = await connection.getAccountInfo(userATA);
 
     const tx = new Transaction();
 
-    const ataInfo = await connection.getAccountInfo(userATA);
     if (!ataInfo) {
       tx.add(
         createAssociatedTokenAccountInstruction(
@@ -96,20 +93,16 @@ export default async function handler(req, res) {
       createMintToInstruction(
         TIX_MINT,
         userATA,
-        MINT_AUTHORITY.publicKey,
+        userWallet, // placeholder for now; backend will overwrite this signer
         tixAmount,
         [],
         TOKEN_PROGRAM_ID
       )
     );
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-
+    const { blockhash } = await connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     tx.feePayer = userWallet;
-
-    // Sign only the mintTo instruction with mint authority
-    tx.partialSign(MINT_AUTHORITY);
 
     const serialized = tx.serialize({
       requireAllSignatures: false,
@@ -119,11 +112,11 @@ export default async function handler(req, res) {
       success: true,
       streak,
       tixAwarded: rewards[streak],
-      transaction: serialized.toString('base64'),
+      base64Tx: serialized.toString('base64'),
     });
 
   } catch (e) {
-    console.error("❌ MintTo failed:", e.message);
-    return res.status(500).json({ error: 'Mint failed', detail: e.message });
+    console.error("❌ MintTo build failed:", e.message);
+    return res.status(500).json({ error: 'Mint build failed', detail: e.message });
   }
 }
