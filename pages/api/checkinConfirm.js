@@ -6,55 +6,62 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-  const { wallet } = req.body;
-  if (!wallet) return res.status(400).json({ error: 'Wallet is required' });
+  const { wallet, streak } = req.body;
+
+  if (!wallet || typeof streak !== 'number') {
+    return res.status(400).json({ error: 'Missing or invalid wallet or streak' });
+  }
+
+  const today = new Date().toISOString();
 
   try {
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    let streak = 1;
-
-    const { data, error } = await supabase
+    const { data, error: selectError } = await supabase
       .from('daily_checkins')
       .select('*')
       .eq('wallet', wallet)
       .single();
 
-    if (error && error.code !== 'PGRST116') {
-      console.error("Supabase select error:", error.message);
-      return res.status(500).json({ error: 'Database error' });
+    if (selectError && selectError.code !== 'PGRST116') {
+      console.error("❌ Supabase SELECT error:", selectError.message);
+      return res.status(500).json({ error: 'Database read error' });
     }
 
     if (data) {
-      const lastCheck = new Date(data.last_checkin);
-      lastCheck.setUTCHours(0, 0, 0, 0);
-      const daysDiff = Math.floor((today - lastCheck) / (1000 * 60 * 60 * 24));
-
-      if (daysDiff === 1) {
-        streak = Math.min(data.streak_count + 1, 7);
-      }
-
-      await supabase
+      const { error: updateError } = await supabase
         .from('daily_checkins')
         .update({
-          last_checkin: new Date().toISOString(),
+          last_checkin: today,
           streak_count: streak,
         })
         .eq('wallet', wallet);
+
+      if (updateError) {
+        console.error("❌ Supabase UPDATE error:", updateError.message);
+        return res.status(500).json({ error: 'Failed to update streak' });
+      }
     } else {
-      await supabase.from('daily_checkins').insert({
-        wallet,
-        last_checkin: new Date().toISOString(),
-        streak_count: 1,
-      });
+      const { error: insertError } = await supabase
+        .from('daily_checkins')
+        .insert({
+          wallet,
+          last_checkin: today,
+          streak_count: 1,
+        });
+
+      if (insertError) {
+        console.error("❌ Supabase INSERT error:", insertError.message);
+        return res.status(500).json({ error: 'Failed to insert new check-in' });
+      }
     }
 
-    return res.status(200).json({ success: true, updated: true, streak });
-
+    return res.status(200).json({ success: true });
   } catch (e) {
-    console.error("Check-in confirm error:", e.message);
-    return res.status(500).json({ error: 'Check-in confirmation failed' });
+    console.error("❌ Unexpected error in checkinConfirm:", e);
+    return res.status(500).json({ error: 'Unexpected server error', detail: e.message });
   }
 }
+

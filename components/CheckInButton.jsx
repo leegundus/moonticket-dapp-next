@@ -1,38 +1,21 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, Transaction } from "@solana/web3.js";
-import {
-  createAssociatedTokenAccountInstruction,
-  createMintToInstruction,
-  getAssociatedTokenAddress,
-  TOKEN_PROGRAM_ID,
-} from "@solana/spl-token";
+import { Connection, Transaction } from "@solana/web3.js";
+import { TIX_MINT, RPC_URL } from "../lib/constants";
 
-const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
-const TIX_DECIMALS = 6;
-
-const rewards = [0, 50, 50, 100, 200, 300, 500, 1000]; // Index 1–7
+const connection = new Connection(RPC_URL);
 
 export default function CheckInButton({ streak, lastCheckin }) {
-  const { publicKey, connected } = useWallet();
-  const [checkingIn, setCheckingIn] = useState(false);
+  const { publicKey, signTransaction } = useWallet();
+  const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [error, setError] = useState(null);
-  const [rewardAmount, setRewardAmount] = useState(null);
-
-  const canCheckIn = () => {
-    if (!lastCheckin) return true;
-    const last = new Date(lastCheckin);
-    const now = new Date();
-    const diff = now - last;
-    return diff >= 24 * 60 * 60 * 1000;
-  };
+  const [error, setError] = useState("");
 
   const handleCheckIn = async () => {
-    if (!publicKey || !canCheckIn()) return;
+    if (!publicKey) return;
 
-    setCheckingIn(true);
-    setError(null);
+    setLoading(true);
+    setError("");
 
     try {
       const res = await fetch("/api/checkin", {
@@ -41,61 +24,55 @@ export default function CheckInButton({ streak, lastCheckin }) {
         body: JSON.stringify({ wallet: publicKey.toBase58() }),
       });
 
-      const { transaction, streak: newStreak, tixAwarded } = await res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Check-in failed");
 
-      if (!transaction) throw new Error("No transaction returned");
+      const tx = Transaction.from(Buffer.from(data.transaction, "base64"));
 
-      const tx = Transaction.from(Buffer.from(transaction, "base64"));
-      const signed = await window.solana.signAndSendTransaction(tx);
-      const txid = signed?.signature;
+      // DO NOT MODIFY tx to avoid Phantom malicious warning
+      const signedTx = await signTransaction(tx);
+      const txid = await connection.sendRawTransaction(signedTx.serialize());
+      await connection.confirmTransaction(txid, "confirmed");
 
-      // Wait for confirmation
-      const confirmedTx = await new Promise((resolve, reject) => {
-        const connection = window.moonConnection;
-        const interval = setInterval(async () => {
-          const status = await connection.getSignatureStatus(txid);
-          if (status?.value?.confirmationStatus === "finalized") {
-            clearInterval(interval);
-            resolve(true);
-          }
-        }, 1000);
-        setTimeout(() => {
-          clearInterval(interval);
-          reject(new Error("Transaction not confirmed in time"));
-        }, 15000);
-      });
-
-      // Confirm success in backend
-      await fetch("/api/checkinConfirm", {
+      // Confirm in Supabase only after successful send
+      await fetch("/api/checkin-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet: publicKey.toBase58() }),
+        body: JSON.stringify({
+          wallet: publicKey.toBase58(),
+          streak: data.streak,
+        }),
       });
 
       setConfirmed(true);
-      setRewardAmount(tixAwarded);
     } catch (err) {
-      console.error("❌ Check-in failed:", err);
-      setError("Check-in failed. Please try again.");
+      console.error("Check-in error:", err);
+      setError("Check-in failed. Try again.");
     } finally {
-      setCheckingIn(false);
+      setLoading(false);
     }
   };
 
+  const today = new Date();
+  const last = new Date(lastCheckin);
+  const sameDay =
+    today.toDateString() === last.toDateString() || confirmed;
+
   return (
-    <div className="mt-4">
+    <div className="mt-4 text-center">
       <button
         onClick={handleCheckIn}
-        disabled={!connected || checkingIn || !canCheckIn()}
-        className="bg-yellow-400 text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50"
+        disabled={loading || sameDay}
+        className="bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-6 rounded disabled:opacity-40"
       >
-        {checkingIn
+        {loading
           ? "Checking in..."
-          : confirmed
-          ? `✅ Checked in +${rewardAmount} TIX`
-          : "Check In"}
+          : sameDay
+          ? "Already Checked In"
+          : "Daily Check-In"}
       </button>
       {error && <p className="text-red-500 mt-2">{error}</p>}
+      {confirmed && <p className="text-green-500 mt-2">✅ Check-in complete!</p>}
     </div>
   );
 }
