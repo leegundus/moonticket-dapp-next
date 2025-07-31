@@ -1,23 +1,38 @@
-import { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Transaction } from "@solana/web3.js";
+import { PublicKey, Transaction } from "@solana/web3.js";
+import {
+  createAssociatedTokenAccountInstruction,
+  createMintToInstruction,
+  getAssociatedTokenAddress,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 
-export default function CheckInButton() {
-  const { publicKey } = useWallet();
-  const [loading, setLoading] = useState(false);
-  const [alreadyCheckedIn, setAlreadyCheckedIn] = useState(false);
-  const [streak, setStreak] = useState(null);
-  const [reward, setReward] = useState(null);
-  const [message, setMessage] = useState("");
-  const [statusLoaded, setStatusLoaded] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(null);
+const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
+const TIX_DECIMALS = 6;
 
-  const rewards = [50, 50, 100, 200, 300, 500, 1000];
+const rewards = [0, 50, 50, 100, 200, 300, 500, 1000]; // Index 1–7
 
-  const checkIn = async () => {
-    if (!publicKey || !window.solana) return;
-    setLoading(true);
-    setMessage("");
+export default function CheckInButton({ streak, lastCheckin }) {
+  const { publicKey, connected } = useWallet();
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState(null);
+  const [rewardAmount, setRewardAmount] = useState(null);
+
+  const canCheckIn = () => {
+    if (!lastCheckin) return true;
+    const last = new Date(lastCheckin);
+    const now = new Date();
+    const diff = now - last;
+    return diff >= 24 * 60 * 60 * 1000;
+  };
+
+  const handleCheckIn = async () => {
+    if (!publicKey || !canCheckIn()) return;
+
+    setCheckingIn(true);
+    setError(null);
 
     try {
       const res = await fetch("/api/checkin", {
@@ -26,152 +41,61 @@ export default function CheckInButton() {
         body: JSON.stringify({ wallet: publicKey.toBase58() }),
       });
 
-      const data = await res.json();
+      const { transaction, streak: newStreak, tixAwarded } = await res.json();
 
-      if (data.success && data.transaction) {
-        const tx = Transaction.from(Buffer.from(data.transaction, "base64"));
+      if (!transaction) throw new Error("No transaction returned");
 
-        const txSig = await window.solana.signAndSendTransaction(tx);
+      const tx = Transaction.from(Buffer.from(transaction, "base64"));
+      const signed = await window.solana.signAndSendTransaction(tx);
+      const txid = signed?.signature;
 
-        setStreak(data.streak);
-        setReward(data.tixAwarded);
-        setMessage(`✅ Successfully checked in! You earned ${data.tixAwarded} TIX.`);
-        setAlreadyCheckedIn(true);
-        startCountdown();
-        console.log("✅ Transaction sent:", txSig);
-      } else if (data.alreadyCheckedIn) {
-        setAlreadyCheckedIn(true);
-        setStreak(data.streak);
-      } else {
-        setMessage("❌ Something went wrong. Try again.");
-      }
-    } catch (e) {
-      console.error("❌ Check-in error:", e);
-      setMessage("❌ Error: " + e.message);
+      // Wait for confirmation
+      const confirmedTx = await new Promise((resolve, reject) => {
+        const connection = window.moonConnection;
+        const interval = setInterval(async () => {
+          const status = await connection.getSignatureStatus(txid);
+          if (status?.value?.confirmationStatus === "finalized") {
+            clearInterval(interval);
+            resolve(true);
+          }
+        }, 1000);
+        setTimeout(() => {
+          clearInterval(interval);
+          reject(new Error("Transaction not confirmed in time"));
+        }, 15000);
+      });
+
+      // Confirm success in backend
+      await fetch("/api/checkinConfirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: publicKey.toBase58() }),
+      });
+
+      setConfirmed(true);
+      setRewardAmount(tixAwarded);
+    } catch (err) {
+      console.error("❌ Check-in failed:", err);
+      setError("Check-in failed. Please try again.");
+    } finally {
+      setCheckingIn(false);
     }
-
-    setLoading(false);
   };
-
-  const startCountdown = () => {
-    const now = new Date();
-    const tomorrowMidnight = new Date();
-    tomorrowMidnight.setUTCHours(24, 0, 0, 0);
-    const diff = tomorrowMidnight - now;
-    setTimeLeft(diff > 0 ? diff : 0);
-  };
-
-  useEffect(() => {
-    const fetchStatus = async () => {
-      if (!publicKey) return;
-
-      try {
-        const res = await fetch(`/api/checkin-status?wallet=${publicKey.toBase58()}`);
-        const data = await res.json();
-
-        if (data.alreadyCheckedIn) {
-          setAlreadyCheckedIn(true);
-          setStreak(data.streak);
-          startCountdown();
-        } else if (data.streak) {
-          setStreak(data.streak);
-        }
-
-        setStatusLoaded(true);
-      } catch (e) {
-        console.error("❌ Failed to fetch check-in status:", e.message);
-        setStatusLoaded(true);
-      }
-    };
-
-    if (publicKey) {
-      fetchStatus();
-    }
-  }, [publicKey]);
-
-  useEffect(() => {
-    if (!timeLeft) return;
-
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => (prev > 1000 ? prev - 1000 : 0));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [timeLeft]);
-
-  const formatTime = (ms) => {
-    const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
-    const minutes = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
-    const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-    return `${hours}:${minutes}:${seconds}`;
-  };
-
-  if (!publicKey || !statusLoaded) return null;
 
   return (
-    <div className="mt-4 text-center">
-      {streak !== null && (
-        <p className="mb-2 text-sm text-white">
-          {alreadyCheckedIn
-            ? reward
-              ? `✅ Successfully checked in! +${reward} TIX (Day ${streak})`
-              : `✅ Checked in today! Streak: Day ${streak}`
-            : streak > 1
-            ? `🔥 Current Streak: Day ${streak} — Don’t miss today!`
-            : null}
-        </p>
-      )}
-
-      <div className="mb-1 text-xs flex justify-center gap-2 text-white">
-        {rewards.map((_, index) => (
-          <div key={index} className="w-10 text-center">
-            Day {index + 1}
-          </div>
-        ))}
-      </div>
-
-      <div className="text-white text-xs mb-1 font-semibold">TIX Earned</div>
-
-      <div className="flex gap-2 justify-center mb-4">
-        {rewards.map((amount, index) => {
-          const isChecked = streak > index;
-          return (
-            <div
-              key={index}
-              className={`w-10 h-10 rounded text-xs flex items-center justify-center font-bold border ${
-                isChecked
-                  ? "bg-yellow-400 text-black border-yellow-500"
-                  : "bg-gray-800 text-white border-gray-600"
-              }`}
-            >
-              {amount}
-            </div>
-          );
-        })}
-      </div>
-
+    <div className="mt-4">
       <button
-        onClick={checkIn}
-        disabled={loading || alreadyCheckedIn}
-        className={`bg-yellow-400 text-black font-bold py-2 px-4 rounded hover:bg-yellow-300 ${
-          alreadyCheckedIn ? "opacity-50 cursor-not-allowed" : ""
-        }`}
+        onClick={handleCheckIn}
+        disabled={!connected || checkingIn || !canCheckIn()}
+        className="bg-yellow-400 text-black px-6 py-2 rounded font-bold hover:bg-yellow-300 disabled:opacity-50"
       >
-        {loading
+        {checkingIn
           ? "Checking in..."
-          : alreadyCheckedIn
-          ? "Checked In"
-          : "Daily Check-In (+TIX)"}
+          : confirmed
+          ? `✅ Checked in +${rewardAmount} TIX`
+          : "Check In"}
       </button>
-
-      {timeLeft > 0 && alreadyCheckedIn && streak < 7 && (
-        <p className="mt-2 text-sm text-white">
-          ⏳ Next check-in available in: {formatTime(timeLeft)}
-        </p>
-      )}
-
-      {message && <p className="mt-2 text-sm text-white">{message}</p>}
+      {error && <p className="text-red-500 mt-2">{error}</p>}
     </div>
   );
 }

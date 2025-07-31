@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   Connection,
   PublicKey,
+  Keypair,
   Transaction,
   clusterApiUrl,
 } from '@solana/web3.js';
@@ -11,6 +12,7 @@ import {
   createMintToInstruction,
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
+import base58 from 'bs58';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -18,6 +20,7 @@ const supabase = createClient(
 );
 
 const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl('mainnet-beta'));
+const MINT_AUTHORITY = Keypair.fromSecretKey(base58.decode(process.env.TIX_MINT_AUTHORITY_SECRET));
 const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 const DECIMALS = 6;
 
@@ -34,6 +37,7 @@ export default async function handler(req, res) {
   today.setUTCHours(0, 0, 0, 0);
 
   let streak = 1;
+  let alreadyCheckedIn = false;
 
   const { data, error } = await supabase
     .from('daily_checkins')
@@ -53,35 +57,25 @@ export default async function handler(req, res) {
     if (daysDiff === 1) {
       streak = Math.min(data.streak_count + 1, 7);
     } else if (daysDiff === 0) {
-      return res.status(200).json({ alreadyCheckedIn: true, streak: data.streak_count });
+      alreadyCheckedIn = true;
     }
+  }
 
-    await supabase
-      .from('daily_checkins')
-      .update({
-        last_checkin: new Date().toISOString(),
-        streak_count: streak,
-      })
-      .eq('wallet', wallet);
-  } else {
-    await supabase.from('daily_checkins').insert({
-      wallet,
-      last_checkin: new Date().toISOString(),
-      streak_count: 1,
-    });
+  if (alreadyCheckedIn) {
+    return res.status(200).json({ alreadyCheckedIn: true, streak: data.streak_count });
   }
 
   try {
     const tixAmount = BigInt(rewards[streak]) * BigInt(10 ** DECIMALS);
     const userATA = await getAssociatedTokenAddress(TIX_MINT, userWallet);
-    const ataInfo = await connection.getAccountInfo(userATA);
 
     const tx = new Transaction();
+    const ataInfo = await connection.getAccountInfo(userATA);
 
     if (!ataInfo) {
       tx.add(
         createAssociatedTokenAccountInstruction(
-          userWallet,       // payer
+          userWallet,       // payer (user pays for ATA)
           userATA,
           userWallet,
           TIX_MINT
@@ -93,30 +87,32 @@ export default async function handler(req, res) {
       createMintToInstruction(
         TIX_MINT,
         userATA,
-        userWallet, // placeholder for now; backend will overwrite this signer
+        MINT_AUTHORITY.publicKey,
         tixAmount,
         [],
         TOKEN_PROGRAM_ID
       )
     );
 
-    const { blockhash } = await connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     tx.feePayer = userWallet;
+    tx.partialSign(MINT_AUTHORITY);
 
-    const serialized = tx.serialize({
-      requireAllSignatures: false,
-    });
+    const serialized = tx.serialize({ requireAllSignatures: false });
+    const base64tx = serialized.toString('base64');
 
     return res.status(200).json({
       success: true,
       streak,
       tixAwarded: rewards[streak],
-      base64Tx: serialized.toString('base64'),
+      transaction: base64tx,
+      lastValidBlockHeight,
     });
 
   } catch (e) {
-    console.error("❌ MintTo build failed:", e.message);
-    return res.status(500).json({ error: 'Mint build failed', detail: e.message });
+    console.error("❌ MintTo failed:", e.message);
+    return res.status(500).json({ error: 'Mint failed', detail: e.message });
   }
 }
+
