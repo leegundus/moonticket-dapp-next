@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
-import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import TweetEntryModal from "./TweetEntryModal";
 
 export default function BuyTix() {
-  const { publicKey, signTransaction } = useWallet();
+  const { publicKey } = useWallet();
   const [solInput, setSolInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -16,7 +15,6 @@ export default function BuyTix() {
 
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
   const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
-  const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 
   useEffect(() => {
     if (publicKey) fetchSolBalance();
@@ -67,11 +65,10 @@ export default function BuyTix() {
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
 
-      const signedTx = await signTransaction(tx);
-      const txid = await connection.sendRawTransaction(signedTx.serialize());
+      const txid = await window.solana.signAndSendTransaction(tx);
       await connection.confirmTransaction(txid, "confirmed");
 
-      // Step 2: Call API to build unsigned TIX transfer tx
+      // Step 2: Trigger TIX transfer from backend
       const res = await fetch("/api/buyTix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,33 +79,9 @@ export default function BuyTix() {
       });
 
       const data = await res.json();
-      if (!data.base64Tx) throw new Error("No transaction returned");
+      if (!data.success) throw new Error(data.error || "TIX transfer failed");
 
-      const txBuffer = Buffer.from(data.base64Tx, "base64");
-      const tixTx = Transaction.from(txBuffer);
-
-      // Step 3: User signs
-      const signedTixTx = await signTransaction(tixTx);
-
-      // Step 4: Send to backend for Treasury signing and sending
-      const finalizeRes = await fetch("/api/finalizeBuyTix", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          base64Tx: signedTixTx.serialize().toString("base64"),
-          walletAddress: publicKey.toBase58(),
-          solAmount: parseFloat(solInput),
-          usdSpent: data.usdSpent,
-          tixAmount: data.tixAmount,
-          tixPriceUsd: data.tixPriceUsd,
-          solPriceUsd: data.solPriceUsd,
-        }),
-      });
-
-      const finalizeData = await finalizeRes.json();
-      if (!finalizeData.success) throw new Error(finalizeData.error || "Transaction failed");
-
-      setResult(finalizeData);
+      setResult(data);
       fetchSolBalance();
     } catch (err) {
       console.error("Buy TIX failed:", err);
