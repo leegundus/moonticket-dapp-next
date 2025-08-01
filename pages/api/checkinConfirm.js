@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   const today = new Date().toISOString();
 
   try {
-    const { data, error: selectError } = await supabase
+    const { error: selectError } = await supabase
       .from('daily_checkins')
       .select('*')
       .eq('wallet', wallet)
@@ -30,7 +30,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Database read error' });
     }
 
-    if (data) {
+    if (!selectError) {
+      // Wallet found – update streak
       const { error: updateError } = await supabase
         .from('daily_checkins')
         .update({
@@ -44,12 +45,13 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Failed to update streak' });
       }
     } else {
+      // New wallet – insert fresh row
       const { error: insertError } = await supabase
         .from('daily_checkins')
         .insert({
           wallet,
           last_checkin: today,
-          streak_count: 1,
+          streak_count: streak, // ✅ use dynamic streak, not 1
         });
 
       if (insertError) {
@@ -64,4 +66,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Unexpected server error', detail: e.message });
   }
 }
-

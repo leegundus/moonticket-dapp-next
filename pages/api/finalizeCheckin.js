@@ -1,53 +1,33 @@
-// pages/api/finalizeCheckin.js
-
-import { createClient } from '@supabase/supabase-js';
 import {
   Connection,
   Keypair,
-  PublicKey,
-  sendAndConfirmTransaction,
-  Transaction,
-  clusterApiUrl
-} from '@solana/web3.js';
-import base58 from 'bs58';
+  Transaction // ✅ Add this to import the Transaction class
+} from "@solana/web3.js";
+import bs58 from "bs58";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
+const TREASURY_KEYPAIR = Keypair.fromSecretKey(
+  bs58.decode(process.env.TREASURY_SECRET_KEY_BASE58)
 );
 
-const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || clusterApiUrl('mainnet-beta'));
-const MINT_AUTHORITY = Keypair.fromSecretKey(base58.decode(process.env.TIX_MINT_AUTHORITY_SECRET));
-
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  const { wallet, serializedTx, streak } = req.body;
-  if (!wallet || !serializedTx || !streak) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    const userPublicKey = new PublicKey(wallet);
-    const txBuffer = Buffer.from(serializedTx, 'base64');
-    const transaction = Transaction.from(txBuffer);
+    const { base64Tx } = req.body;
+    if (!base64Tx) return res.status(400).json({ error: "Missing transaction" });
 
-    transaction.partialSign(MINT_AUTHORITY);
+    const txBuffer = Buffer.from(base64Tx, "base64");
+    const tx = Transaction.from(txBuffer);
 
-    const txid = await sendAndConfirmTransaction(connection, transaction, [MINT_AUTHORITY]);
+    tx.partialSign(TREASURY_KEYPAIR);
 
-    await supabase
-      .from('daily_checkins')
-      .update({
-        last_checkin: new Date().toISOString(),
-        streak_count: streak,
-      })
-      .eq('wallet', wallet);
+    const txid = await connection.sendRawTransaction(tx.serialize());
+    await connection.confirmTransaction(txid, "confirmed");
 
     return res.status(200).json({ success: true, txid });
-  } catch (e) {
-    console.error('❌ finalizeCheckin failed:', e.message);
-    return res.status(500).json({ error: 'Check-in finalization failed', detail: e.message });
+  } catch (err) {
+    console.error("Finalize Checkin Error:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 }
-

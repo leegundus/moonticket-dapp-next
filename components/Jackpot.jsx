@@ -14,6 +14,8 @@ export default function Jackpot() {
   const { moonCountdown, nextMoonDrawDate } = useCountdown();
   const [solPrice, setSolPrice] = useState(0);
   const [showFreeModal, setShowFreeModal] = useState(false);
+  const [streak, setStreak] = useState(0);
+  const [lastCheckin, setLastCheckin] = useState(null);
 
   const { solBalance, tixBalance } = useBalances();
   const entryData = useEntries(publicKey);
@@ -54,6 +56,21 @@ export default function Jackpot() {
     fetchPrice();
   }, []);
 
+  useEffect(() => {
+    const fetchCheckinStatus = async () => {
+      if (!publicKey) return;
+      try {
+        const res = await fetch(`/api/checkinStatus?wallet=${publicKey.toBase58()}`);
+        const data = await res.json();
+        setStreak(data.streak || 0);
+        setLastCheckin(data.lastCheckin ? new Date(data.lastCheckin) : null);
+      } catch (err) {
+        console.error("Failed to fetch check-in status:", err);
+      }
+    };
+    fetchCheckinStatus();
+  }, [publicKey]);
+
   return (
     <div className="bg-black text-yellow-400 min-h-[100dvh] flex flex-col items-center text-center pt-40 pb-0 overflow-hidden">
       <h1 className="text-3xl font-bold mb-6">Moonticket Jackpot</h1>
@@ -82,9 +99,8 @@ export default function Jackpot() {
           <p><strong>TIX:</strong> {tixBalance?.toLocaleString()} TIX</p>
           <p><strong>SOL:</strong> {Number(solBalance)?.toFixed(4)} SOL</p>
 
-          {/* Add Check-In Button Here */}
           <div className="mt-4">
-            <CheckInButton />
+            <CheckInButton streak={streak} lastCheckin={lastCheckin} />
           </div>
         </div>
       ) : (
@@ -120,10 +136,10 @@ export default function Jackpot() {
 
       <div className="mt-12 text-center px-4">
         <p className="text-xs text-yellow-400 max-w-2xl mx-auto whitespace-pre-line leading-relaxed">
-          No purchase necessary to enter or win. Free entry available via social media. 
-          Moonticket is not a financial instrument, investment product, or security. 
+          No purchase necessary to enter or win. Free entry available via social media.
+          Moonticket is not a financial instrument, investment product, or security.
           This is a promotional sweepstakes for entertainment purposes only.
-          Void where prohibited. Participation is not permitted in jurisdictions where 
+          Void where prohibited. Participation is not permitted in jurisdictions where
           local, state, or national laws restrict or prohibit such activity.
         </p>
       </div>
