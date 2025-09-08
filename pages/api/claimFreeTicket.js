@@ -1,17 +1,29 @@
 const { createClient } = require("@supabase/supabase-js");
 
+function isValidTweetUrl(u) {
+  try {
+    const url = new URL(u);
+    const host = url.hostname.toLowerCase();
+    const allowed = ["x.com","www.x.com","twitter.com","www.twitter.com","mobile.twitter.com"];
+    if (!allowed.includes(host)) return false;
+    return /^\/[A-Za-z0-9_]{1,15}\/status\/\d+/.test(url.pathname);
+  } catch { return false; }
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method !== "POST") return res.status(405).json({ ok:false, error:"Method not allowed" });
     const { wallet, tweetUrl } = req.body || {};
     if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
+    if (!tweetUrl || !isValidTweetUrl(tweetUrl)) {
+      return res.status(400).json({ ok:false, error:"Valid X/Twitter status URL required" });
+    }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-    // latest draw (current period anchor)
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
-      .select("id, draw_time")
+      .select("id")
       .order("draw_time", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -19,23 +31,21 @@ module.exports = async (req, res) => {
 
     const drawId = lastDraw?.id || null;
 
-    // insert pending ticket
     const { data: row, error: ie } = await supabase
       .from("pending_tickets")
       .insert({
         wallet,
         draw_id: drawId,
         ticket_type: "free",
-        tweet_url: tweetUrl || null
+        is_redeemed: true,    // credit model
+        is_consumed: false,
+        tweet_url: tweetUrl
       })
       .select("id")
       .single();
 
     if (ie) {
-      // unique index violation => already claimed
-      if (ie.code === "23505") {
-        return res.status(409).json({ ok:false, error:"Already claimed this draw" });
-      }
+      if (ie.code === "23505") return res.status(409).json({ ok:false, error:"Already claimed this draw" });
       return res.status(500).json({ ok:false, error:ie.message });
     }
 
