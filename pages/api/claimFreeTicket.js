@@ -7,13 +7,14 @@ function isValidTweetUrl(u) {
     const allowed = ["x.com","www.x.com","twitter.com","www.twitter.com","mobile.twitter.com"];
     if (!allowed.includes(host)) return false;
     return /^\/[A-Za-z0-9_]{1,15}\/status\/\d+/.test(url.pathname);
-  } catch { 
-    return false; 
-  }
+  } catch { return false; }
 }
 
-module.exports = async (req, res) => {
+module.exports = async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
+
+  // Accept CORS preflight
+  if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"Method not allowed" });
@@ -21,25 +22,21 @@ module.exports = async (req, res) => {
 
   try {
     const { wallet, tweetUrl } = req.body || {};
-    if (!wallet) {
-      return res.status(400).json({ ok:false, error:"Missing wallet" });
-    }
+    if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
     if (!tweetUrl || !isValidTweetUrl(tweetUrl)) {
       return res.status(400).json({ ok:false, error:"Valid X/Twitter status URL required" });
     }
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+    // latest draw anchors the credit window
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
       .select("id")
       .order("draw_time", { ascending: false })
       .limit(1)
       .maybeSingle();
-
-    if (de) {
-      return res.status(500).json({ ok:false, error: de.message });
-    }
+    if (de) return res.status(500).json({ ok:false, error: de.message });
 
     const drawId = lastDraw?.id || null;
 
@@ -49,7 +46,7 @@ module.exports = async (req, res) => {
         wallet,
         draw_id: drawId,
         ticket_type: "free",
-        is_redeemed: true,
+        is_redeemed: true,     // credit model
         is_consumed: false,
         tweet_url: tweetUrl
       })
@@ -57,9 +54,7 @@ module.exports = async (req, res) => {
       .single();
 
     if (ie) {
-      if (ie.code === "23505") {
-        return res.status(409).json({ ok:false, error:"Already claimed this draw" });
-      }
+      if (ie.code === "23505") return res.status(409).json({ ok:false, error:"Already claimed this draw" });
       return res.status(500).json({ ok:false, error: ie.message });
     }
 
