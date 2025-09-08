@@ -11,9 +11,11 @@ function isValidTweetUrl(u) {
 }
 
 module.exports = async function handler(req, res) {
+  // CORS + JSON
   res.setHeader("Content-Type", "application/json");
-
-  // Accept CORS preflight
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.method !== "POST") {
@@ -29,13 +31,11 @@ module.exports = async function handler(req, res) {
 
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-    // latest draw anchors the credit window
+    // Latest draw anchors the credit window
     const { data: lastDraw, error: de } = await supabase
-      .from("draws")
-      .select("id")
+      .from("draws").select("id")
       .order("draw_time", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1).maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
 
     const drawId = lastDraw?.id || null;
@@ -46,12 +46,11 @@ module.exports = async function handler(req, res) {
         wallet,
         draw_id: drawId,
         ticket_type: "free",
-        is_redeemed: true,     // credit model
+        is_redeemed: true,
         is_consumed: false,
         tweet_url: tweetUrl
       })
-      .select("id")
-      .single();
+      .select("id").single();
 
     if (ie) {
       if (ie.code === "23505") return res.status(409).json({ ok:false, error:"Already claimed this draw" });

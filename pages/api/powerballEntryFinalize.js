@@ -13,9 +13,11 @@ function validateTickets(tickets) {
 }
 
 module.exports = async function handler(req, res) {
+  // CORS + JSON
   res.setHeader("Content-Type", "application/json");
-
-  // Accept CORS preflight
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.method !== "POST") {
@@ -25,52 +27,54 @@ module.exports = async function handler(req, res) {
   try {
     const { wallet, signature, tickets, expectedTotalBase = 0, lockedCredits = 0 } = req.body || {};
     if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
-
     const v = validateTickets(tickets);
     if (v) return res.status(400).json({ ok:false, error: v });
 
     const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL;
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const TIX_MINT = process.env.TIX_MINT;
     const TREASURY_PUB = new PublicKey(process.env.TREASURY_PUBLIC_KEY);
 
-    if (!RPC_URL || !SUPABASE_URL || !SUPABASE_KEY || !TIX_MINT || !TREASURY_PUB) {
+    if (!RPC_URL || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !TIX_MINT) {
       return res.status(500).json({ ok:false, error:"Server misconfigured (env)" });
     }
 
     const connection = new Connection(RPC_URL, "confirmed");
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-    // verify payment when expected
+    // Verify payment if expected
     if (Number(expectedTotalBase) > 0) {
       if (!signature) return res.status(400).json({ ok:false, error:"Missing signature" });
+
       const parsed = await connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
       if (!parsed) return res.status(400).json({ ok:false, error:"Transaction not found" });
 
       const pre = parsed.meta?.preTokenBalances || [];
       const post = parsed.meta?.postTokenBalances || [];
+
       const preBal = pre.find(b => b.mint === TIX_MINT && b.owner === TREASURY_PUB.toBase58());
       const postBal = post.find(b => b.mint === TIX_MINT && b.owner === TREASURY_PUB.toBase58());
       if (!postBal) return res.status(400).json({ ok:false, error:"Treasury TIX balance not present in tx" });
 
-      const credited = BigInt(postBal.uiTokenAmount.amount) - BigInt(preBal ? preBal.uiTokenAmount.amount : "0");
+      const credited =
+        BigInt(postBal.uiTokenAmount.amount) - BigInt(preBal ? preBal.uiTokenAmount.amount : "0");
+
       if (credited !== BigInt(expectedTotalBase)) {
-        return res.status(400).json({ ok:false, error:`Amount mismatch. Expected ${expectedTotalBase}, got ${credited.toString()}` });
+        return res.status(400).json({
+          ok:false,
+          error:`Amount mismatch. Expected ${expectedTotalBase}, got ${credited.toString()}`
+        });
       }
     }
 
-    // draw anchors for credit consumption
+    // Latest draw
     const { data: lastDraw, error: de } = await supabase
-      .from("draws")
-      .select("id")
+      .from("draws").select("id")
       .order("draw_time", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1).maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
     const drawId = lastDraw?.id || null;
 
-    // consume credits (oldest first)
+    // Consume credits
     let creditTypes = [];
     if (Number(lockedCredits) > 0) {
       const { data: creditsRows, error: ce } = await supabase
@@ -97,7 +101,7 @@ module.exports = async function handler(req, res) {
       if (ue) return res.status(500).json({ ok:false, error: ue.message });
     }
 
-    // build entries list (credits first, then paid)
+    // Insert entries (credits first, then paid)
     const c = Number(lockedCredits);
     const creditEntries = tickets.slice(0, c).map((t, i) => ({
       wallet,

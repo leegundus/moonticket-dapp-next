@@ -19,9 +19,11 @@ function validateTickets(tickets) {
 }
 
 module.exports = async function handler(req, res) {
+  // CORS + JSON
   res.setHeader("Content-Type", "application/json");
-
-  // Accept CORS preflight
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.method !== "POST") {
@@ -31,30 +33,25 @@ module.exports = async function handler(req, res) {
   try {
     const { wallet, tickets, tixCostPerTicket, useCredits = 0 } = req.body || {};
     if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
-
     const v = validateTickets(tickets);
     if (v) return res.status(400).json({ ok:false, error: v });
 
     const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL;
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const TIX_MINT = new PublicKey(process.env.TIX_MINT);
     const TREASURY_PUB = new PublicKey(process.env.TREASURY_PUBLIC_KEY);
 
-    if (!RPC_URL || !SUPABASE_URL || !SUPABASE_KEY || !TIX_MINT || !TREASURY_PUB) {
+    if (!RPC_URL || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return res.status(500).json({ ok:false, error:"Server misconfigured (env)" });
     }
 
     const connection = new Connection(RPC_URL, "confirmed");
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-    // credits are per latest draw
+    // Credits are per latest draw
     const { data: lastDraw, error: de } = await supabase
-      .from("draws")
-      .select("id")
+      .from("draws").select("id")
       .order("draw_time", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1).maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
     const drawId = lastDraw?.id || null;
 
@@ -71,7 +68,7 @@ module.exports = async function handler(req, res) {
     const availableCredits = creditRows?.length || 0;
     const lockedCredits = Math.min(Number(useCredits) || 0, availableCredits, tickets.length);
 
-    // cost computation
+    // Cost computation
     const payableCount = tickets.length - lockedCredits;
     const TOKEN_DECIMALS = 6;
     const priceHuman = Number(tixCostPerTicket); // e.g., 10000
@@ -80,25 +77,25 @@ module.exports = async function handler(req, res) {
     }
     const totalBase = Math.round(payableCount * priceHuman * 10 ** TOKEN_DECIMALS);
 
-    // no payment needed -> still OK, but txBase64 = null
+    // No payment needed → still OK, but txBase64 = null
     if (payableCount === 0) {
       return res.status(200).json({ ok:true, txBase64:null, expectedTotalBase:0, lockedCredits });
     }
 
+    // Build unsigned token transfer: user -> treasury
     const userPub = new PublicKey(wallet);
     const userAta = await getAssociatedTokenAddress(TIX_MINT, userPub, false);
     const treasuryAta = await getAssociatedTokenAddress(TIX_MINT, TREASURY_PUB, false);
 
     const tx = new Transaction();
 
-    // ensure accounts exist (payer = user)
+    // Ensure ATAs exist (payer = user)
     try { await getAccount(connection, treasuryAta); }
     catch { tx.add(createAssociatedTokenAccountInstruction(userPub, treasuryAta, TREASURY_PUB, TIX_MINT)); }
 
     try { await getAccount(connection, userAta); }
     catch { tx.add(createAssociatedTokenAccountInstruction(userPub, userAta, userPub, TIX_MINT)); }
 
-    // transfer TIX user -> treasury
     tx.add(createTransferInstruction(userAta, treasuryAta, userPub, totalBase));
     tx.feePayer = userPub;
     tx.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
