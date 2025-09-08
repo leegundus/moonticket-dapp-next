@@ -77,13 +77,13 @@ export default async function handler(req, res) {
     const txid = await connection.sendRawTransaction(tx.serialize());
     await connection.confirmTransaction(txid, "confirmed");
 
-    await supabase.from("entries").insert({
+    await supabase.from("purchases").insert({
       wallet: walletAddress,
       amount_usd: usdSpent,
       tix_amount: tixAmount,
       sol_amount: solAmount,
-      entries: usdSpent,
-      entry_type: "purchase",
+      tx_sig: txid,
+      created_at: new Date().toISOString()
     });
 
     return res.status(200).json({

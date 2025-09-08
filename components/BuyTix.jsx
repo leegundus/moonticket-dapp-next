@@ -120,7 +120,6 @@ export default function BuyTix() {
           {result && result.success ? (
             <div className="mb-4">
               <p><strong>You’ll receive:</strong> {result.tixAmount.toLocaleString()} TIX</p>
-              <p><strong>Entries earned:</strong> {result.usdSpent.toFixed(2)}</p>
             </div>
           ) : null}
 

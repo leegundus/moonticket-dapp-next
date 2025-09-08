@@ -126,12 +126,13 @@ export default function Jackpot() {
      </div>
 
       <div className="mt-6 text-center">
-        <img
-          src="/freeTix-button.png"
-          alt="Claim Free Entry"
-          className="mx-auto cursor-pointer hover:scale-105 transition"
-          onClick={() => setShowFreeModal(true)}
-        />
+        <a href="/Moontickets">
+          <img
+            src="/freeTix-button.png"
+            alt="Claim Free Entry"
+            className="mx-auto cursor-pointer hover:scale-105 transition"
+          />
+        </a>
       </div>
 
       <div className="mt-12 text-center px-4">
