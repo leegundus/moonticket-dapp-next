@@ -1,5 +1,21 @@
-const { Connection, PublicKey } = require("@solana/web3.js");
-const { createClient } = require("@supabase/supabase-js");
+import { Connection, PublicKey } from "@solana/web3.js";
+import { createClient } from "@supabase/supabase-js";
+import bs58 from "bs58";
+import { Keypair } from "@solana/web3.js";
+
+const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
+const TIX_MINT = process.env.NEXT_PUBLIC_TIX_MINT;
+
+// derive treasury public (same as buyTix.js)
+const TREASURY_KEYPAIR = Keypair.fromSecretKey(
+  bs58.decode(process.env.TREASURY_SECRET_KEY_BASE58)
+);
+const TREASURY_WALLET = TREASURY_KEYPAIR.publicKey;
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 function validateTickets(tickets) {
   if (!Array.isArray(tickets) || !tickets.length) return "No tickets";
@@ -12,14 +28,7 @@ function validateTickets(tickets) {
   return null;
 }
 
-module.exports = async function handler(req, res) {
-  // CORS + JSON
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "content-type");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  if (req.method === "OPTIONS") return res.status(200).end();
-
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"Method not allowed" });
   }
@@ -27,21 +36,11 @@ module.exports = async function handler(req, res) {
   try {
     const { wallet, signature, tickets, expectedTotalBase = 0, lockedCredits = 0 } = req.body || {};
     if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
+
     const v = validateTickets(tickets);
     if (v) return res.status(400).json({ ok:false, error: v });
 
-    const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL;
-    const TIX_MINT = process.env.TIX_MINT;
-    const TREASURY_PUB = new PublicKey(process.env.TREASURY_PUBLIC_KEY);
-
-    if (!RPC_URL || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !TIX_MINT) {
-      return res.status(500).json({ ok:false, error:"Server misconfigured (env)" });
-    }
-
-    const connection = new Connection(RPC_URL, "confirmed");
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-    // Verify payment if expected
+    // Verify payment when expected
     if (Number(expectedTotalBase) > 0) {
       if (!signature) return res.status(400).json({ ok:false, error:"Missing signature" });
 
@@ -51,30 +50,29 @@ module.exports = async function handler(req, res) {
       const pre = parsed.meta?.preTokenBalances || [];
       const post = parsed.meta?.postTokenBalances || [];
 
-      const preBal = pre.find(b => b.mint === TIX_MINT && b.owner === TREASURY_PUB.toBase58());
-      const postBal = post.find(b => b.mint === TIX_MINT && b.owner === TREASURY_PUB.toBase58());
+      const preBal = pre.find(b => b.mint === TIX_MINT && b.owner === TREASURY_WALLET.toBase58());
+      const postBal = post.find(b => b.mint === TIX_MINT && b.owner === TREASURY_WALLET.toBase58());
       if (!postBal) return res.status(400).json({ ok:false, error:"Treasury TIX balance not present in tx" });
 
       const credited =
         BigInt(postBal.uiTokenAmount.amount) - BigInt(preBal ? preBal.uiTokenAmount.amount : "0");
 
       if (credited !== BigInt(expectedTotalBase)) {
-        return res.status(400).json({
-          ok:false,
-          error:`Amount mismatch. Expected ${expectedTotalBase}, got ${credited.toString()}`
-        });
+        return res.status(400).json({ ok:false, error:`Amount mismatch. Expected ${expectedTotalBase}, got ${credited.toString()}` });
       }
     }
 
     // Latest draw
     const { data: lastDraw, error: de } = await supabase
-      .from("draws").select("id")
+      .from("draws")
+      .select("id")
       .order("draw_time", { ascending: false })
-      .limit(1).maybeSingle();
+      .limit(1)
+      .maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
     const drawId = lastDraw?.id || null;
 
-    // Consume credits
+    // Consume credits (FIFO)
     let creditTypes = [];
     if (Number(lockedCredits) > 0) {
       const { data: creditsRows, error: ce } = await supabase
@@ -123,4 +121,4 @@ module.exports = async function handler(req, res) {
     console.error("powerballEntryFinalize error:", e);
     return res.status(500).json({ ok:false, error: e.message || "Server error" });
   }
-};
+}
