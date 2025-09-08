@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Connection, PublicKey } from "@solana/web3.js";
 
 const range = (n, start=1) => Array.from({length:n}, (_,i)=>i+start);
 const MAIN_POOL = range(25, 1);
 const MOON_POOL = range(10, 1);
-
-const TIX_PER_TICKET = 10_000; // $1 worth of TIX (static, as requested)
+const TIX_PER_TICKET = 10_000; // static: $1 = 10k TIX
+const TOKEN_DECIMALS = 6;
 
 function quickPickOne() {
   const pool = [...MAIN_POOL];
@@ -32,46 +33,83 @@ function isValidTweetUrl(u) {
     const host = url.hostname.toLowerCase();
     const allowed = ["x.com","www.x.com","twitter.com","www.twitter.com","mobile.twitter.com"];
     if (!allowed.includes(host)) return false;
-    // require /<handle>/status/<digits>
     return /^\/[A-Za-z0-9_]{1,15}\/status\/\d+/.test(url.pathname);
   } catch { return false; }
 }
 
+/** Defensive fetch: don’t crash if API returns empty/HTML */
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; }
+  catch { /* not JSON */ }
+  if (!res.ok) {
+    const msg = data?.error || text || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data ?? {};
+}
+
 export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
-  // Robust wallet detection: prop OR Phantom (fallback)
+  // Robust wallet detection (prop first, Phantom fallback)
   const [wallet, setWallet] = useState(publicKey?.toString?.() || "");
-  useEffect(() => {
-    if (publicKey?.toString) setWallet(publicKey.toString());
-  }, [publicKey]);
+  useEffect(() => { if (publicKey?.toString) setWallet(publicKey.toString()); }, [publicKey]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const s = window.solana;
-    if (wallet) return; // already set by prop
-    if (s?.isConnected && s.publicKey) {
-      setWallet(s.publicKey.toString());
-    }
+    if (!wallet && s?.isConnected && s.publicKey) setWallet(s.publicKey.toString());
     const onConnect = () => setWallet(s?.publicKey?.toString() || "");
-    const onAccount = (pk) => setWallet(pk?.toString?.() || "");
+    const onAcct = (pk) => setWallet(pk?.toString?.() || "");
     s?.on?.("connect", onConnect);
-    s?.on?.("accountChanged", onAccount);
-    return () => {
-      s?.off?.("connect", onConnect);
-      s?.off?.("accountChanged", onAccount);
-    };
+    s?.on?.("accountChanged", onAcct);
+    return () => { s?.off?.("connect", onConnect); s?.off?.("accountChanged", onAcct); };
   }, [wallet]);
+
+  // On-chain TIX balance (client-side)
+  const [tixBal, setTixBal] = useState(null);
+  const TIX_MINT = process.env.NEXT_PUBLIC_TIX_MINT;
+  const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL;
+
+  async function fetchTixBalance(ownerStr) {
+    try {
+      if (!ownerStr || !TIX_MINT || !RPC_URL) return setTixBal(null);
+      const conn = new Connection(RPC_URL, "confirmed");
+      const owner = new PublicKey(ownerStr);
+      const mint = new PublicKey(TIX_MINT);
+      const resp = await conn.getParsedTokenAccountsByOwner(owner, { mint });
+      let total = 0n;
+      for (const { account } of resp.value) {
+        const amt = account.data.parsed.info.tokenAmount.amount; // base units (string)
+        total += BigInt(amt);
+      }
+      const human = Number(total) / 10 ** TOKEN_DECIMALS;
+      setTixBal(human);
+    } catch (e) {
+      console.error("fetchTixBalance error:", e);
+      setTixBal(null);
+    }
+  }
+
+  // After-action refresh helper (also refreshes TIX balance)
+  async function afterAnyActionRefresh() {
+    try { await onRefresh?.(); } catch {}
+    if (wallet) fetchTixBalance(wallet);
+  }
+
+  useEffect(() => { if (wallet) fetchTixBalance(wallet); }, [wallet]);
 
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [credits, setCredits] = useState(0);            // free/promo credits for current draw
+  const [credits, setCredits] = useState(0);
   const [tweetUrl, setTweetUrl] = useState("");
   const tweetOk = isValidTweetUrl(tweetUrl);
 
   async function fetchCredits() {
     if (!wallet) return;
     try {
-      const res = await fetch(`/api/ticketCredits?wallet=${wallet}`);
-      const json = await res.json();
-      setCredits(Number(json?.credits || 0));
+      const j = await fetchJSON(`/api/ticketCredits?wallet=${wallet}`);
+      setCredits(Number(j?.credits || 0));
     } catch (e) { console.error(e); }
   }
   useEffect(() => { fetchCredits(); }, [wallet]);
@@ -81,31 +119,39 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   function updateTicket(idx, patch) { setCart(prev => prev.map((t,i)=> i===idx ? {...t, ...patch} : t)); }
   function removeTicket(idx) { setCart(prev => prev.filter((_,i)=> i!==idx)); }
 
+  // Disable duplicate choices in the same ticket
+  function isDisabledOption(ticketIdx, fieldKey, n) {
+    const t = cart[ticketIdx] || {};
+    const fields = ["num1","num2","num3","num4"].filter(f => f !== fieldKey);
+    return fields.some(f => t[f] === n);
+  }
+
   const ticketsToCredit = useMemo(() => Math.min(credits, cart.length), [credits, cart.length]);
   const ticketsToPay = useMemo(() => Math.max(0, cart.length - ticketsToCredit), [cart.length, ticketsToCredit]);
   const totalTixCost = useMemo(() => ticketsToPay * TIX_PER_TICKET, [ticketsToPay]);
 
   function openXComposer() {
     const defaultText = encodeURIComponent(
-      "Grabbing my free #Moonticket 🎟️ Come play: moonticket.io"
+      "Grabbing my free #Moonticket 🎟️ Come play: https://moonticket.io"
     );
+    // Opens prefilled tweet in a new tab
     window.open(`https://x.com/intent/post?text=${defaultText}`, "_blank", "noopener,noreferrer");
   }
 
   async function claimFree() {
     if (!wallet) return alert("Connect wallet first");
-    if (!tweetOk) return alert("Please paste a valid X/Twitter post URL like https://x.com/<handle>/status/<id>");
+    if (!tweetOk) return alert("Paste a valid X/Twitter post URL like https://x.com/<handle>/status/<id>");
     setLoading(true);
     try {
-      const res = await fetch("/api/claimFreeTicket", {
+      const json = await fetchJSON("/api/claimFreeTicket", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ wallet, tweetUrl })
       });
-      const json = await res.json();
       if (!json?.ok) throw new Error(json?.error || "Claim failed");
       await fetchCredits();
       setTweetUrl("");
+      await afterAnyActionRefresh();
       alert("Free ticket credited! It will be applied at checkout.");
     } catch (e) {
       alert(e.message);
@@ -118,7 +164,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     const addr = wallet;
     if (!addr) return alert("Please connect wallet first");
     if (!cart.length) return alert("Add at least one ticket");
-
     for (const t of cart) {
       const err = validateTicket(t);
       if (err) return alert(err);
@@ -126,28 +171,28 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
     setLoading(true);
     try {
-      // 1) Prepare: lock credits & (if needed) build unsigned transfer for the payable tickets
-      const prep = await fetch("/api/powerballEntryTx", {
+      // 1) Prepare: lock credits + (if needed) unsigned transfer tx
+      const prep = await fetchJSON("/api/powerballEntryTx", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
           wallet: addr,
           tickets: cart,
-          tixCostPerTicket: TIX_PER_TICKET,   // static cost
+          tixCostPerTicket: TIX_PER_TICKET,
           useCredits: ticketsToCredit
         })
-      }).then(r=>r.json());
+      });
       if (!prep?.ok) throw new Error(prep?.error || "Failed to prepare");
 
       let signature = null;
       if (prep.txBase64) {
-        const txnBytes = Uint8Array.from(atob(prep.txBase64), c=>c.charCodeAt(0));
-        const signed = await window.solana.signAndSendTransaction({ serializedTransaction: txnBytes });
+        const bytes = Uint8Array.from(atob(prep.txBase64), c=>c.charCodeAt(0));
+        const signed = await window.solana.signAndSendTransaction({ serializedTransaction: bytes });
         signature = signed?.signature || signed;
       }
 
-      // 2) Finalize: verify (if payment), consume credits, insert entries
-      const fin = await fetch("/api/powerballEntryFinalize", {
+      // 2) Finalize
+      const fin = await fetchJSON("/api/powerballEntryFinalize", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
@@ -157,11 +202,11 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
           expectedTotalBase: prep.expectedTotalBase || 0,
           lockedCredits: prep.lockedCredits || 0
         })
-      }).then(r=>r.json());
+      });
       if (!fin?.ok) throw new Error(fin?.error || "Finalize failed");
 
       setCart([]);
-      await onRefresh?.();
+      await afterAnyActionRefresh();
       await fetchCredits();
       alert(`Tickets submitted: ${fin.inserted} (credits: ${prep.lockedCredits || 0}, paid: ${ticketsToPay})`);
     } catch (e) {
@@ -187,11 +232,19 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         Wallet: {wallet ? wallet.slice(0,4)+"…"+wallet.slice(-4) : "Not connected"}
       </div>
 
-      {/* Free ticket credit */}
+      {/* Balances / stats */}
+      <div style={{display:"flex", gap:16, flexWrap:"wrap", alignItems:"center", marginBottom:16}}>
+        <div><b>TIX balance:</b> {tixBal == null ? "—" : new Intl.NumberFormat().format(tixBal)}</div>
+        <div><b>TIX per ticket:</b> {new Intl.NumberFormat().format(TIX_PER_TICKET)}</div>
+        <div><b>Credits this draw:</b> {credits}</div>
+        <button onClick={() => wallet && fetchTixBalance(wallet)}>Refresh</button>
+      </div>
+
+      {/* Weekly free credit */}
       <div style={{border:"1px solid #333", borderRadius:8, padding:12, marginBottom:16}}>
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap"}}>
           <div style={{fontWeight:600}}>Weekly Free Ticket</div>
-          <div style={{marginLeft:"auto", display:"flex", gap:8}}>
+          <div style={{display:"flex", gap:8}}>
             <button onClick={openXComposer}>Post on X</button>
           </div>
         </div>
@@ -202,12 +255,12 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             onChange={e=>setTweetUrl(e.target.value)}
             placeholder="Paste tweet URL (required)"
           />
-          <button onClick={claimFree} disabled={loading || !tweetOk}>
-            Claim Free Ticket
-          </button>
+          <button onClick={claimFree} disabled={loading || !tweetOk}>Claim Free Ticket</button>
         </div>
         {!tweetOk && tweetUrl && (
-          <div style={{marginTop:6, fontSize:12, color:"#fbbf24"}}>Enter a valid X/Twitter status URL (e.g., https://x.com/handle/status/12345).</div>
+          <div style={{marginTop:6, fontSize:12, color:"#fbbf24"}}>
+            Enter a valid X/Twitter status URL (e.g., https://x.com/handle/status/12345).
+          </div>
         )}
         <div style={{marginTop:6, fontSize:12, opacity:0.7}}>
           Claim adds a <b>credit</b>. Use it at checkout on your next ticket.
@@ -222,7 +275,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
       {cart.map((t, idx) => (
         <div key={idx} style={{position:"relative", border:"1px solid #333", borderRadius:8, padding:12, marginBottom:8}}>
-          {/* “X” delete in the top-right corner */}
+          {/* “X” remove */}
           <button
             aria-label="Remove"
             title="Remove ticket"
@@ -235,14 +288,18 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
           >×</button>
 
           <div style={{display:"flex", gap:8, alignItems:"center", flexWrap:"wrap"}}>
-            {[1,2,3,4].map(k => (
+            {["num1","num2","num3","num4"].map(fieldKey => (
               <select
-                key={k}
+                key={fieldKey}
                 style={selectStyle}
-                value={t[`num${k}`]}
-                onChange={e=>updateTicket(idx, {[`num${k}`]: Number(e.target.value)})}
+                value={t[fieldKey]}
+                onChange={e=>updateTicket(idx, { [fieldKey]: Number(e.target.value) })}
               >
-                {MAIN_POOL.map(n => <option key={n} value={n}>{n}</option>)}
+                {MAIN_POOL.map(n => (
+                  <option key={n} value={n} disabled={isDisabledOption(idx, fieldKey, n)}>
+                    {n}
+                  </option>
+                ))}
               </select>
             ))}
             <span>Moonball</span>
