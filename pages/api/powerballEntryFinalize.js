@@ -66,7 +66,7 @@ export default async function handler(req, res) {
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
       .select("id")
-      .order("draw_time", { ascending: false })
+      .order("draw_date", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
