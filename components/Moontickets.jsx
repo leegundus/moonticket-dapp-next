@@ -4,7 +4,7 @@ import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 const range = (n, start=1) => Array.from({length:n}, (_,i)=>i+start);
 const MAIN_POOL = range(25, 1);
 const MOON_POOL = range(10, 1);
-const TIX_PER_TICKET = 10_000; // static: $1 = 10k TIX
+const TIX_PER_TICKET = 10_000; // informational
 
 function quickPickOne() {
   const pool = [...MAIN_POOL];
@@ -59,7 +59,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     return () => { s?.off?.("connect", onConnect); s?.off?.("accountChanged", onAcct); };
   }, [wallet]);
 
-  // --- SOL balance ---
+  // SOL balance
   const [solBalance, setSolBalance] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +82,19 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const [tweetUrl, setTweetUrl] = useState("");
   const tweetOk = isValidTweetUrl(tweetUrl);
 
+  // Current-draw tickets
+  const [myTickets, setMyTickets] = useState([]);
+  async function loadMyTickets() {
+    if (!wallet) { setMyTickets([]); return; }
+    try {
+      const j = await fetchJSON(`/api/myTickets?wallet=${wallet}`);
+      setMyTickets(j?.items || []);
+    } catch (e) {
+      console.error("myTickets error:", e);
+      setMyTickets([]);
+    }
+  }
+
   async function fetchCredits() {
     if (!wallet) return;
     try {
@@ -89,25 +102,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       setCredits(Number(j?.credits || 0));
     } catch (e) { console.error(e); }
   }
-  useEffect(() => { fetchCredits(); }, [wallet]);
-
-  // --- NEW: load my tickets for the “current drawing” ---
-  const [myTickets, setMyTickets] = useState([]);
-  const [ticketsMeta, setTicketsMeta] = useState(null);
-
-  async function loadMyTickets() {
-    if (!wallet) { setMyTickets([]); setTicketsMeta(null); return; }
-    try {
-      const j = await fetchJSON(`/api/myTickets?wallet=${wallet}`);
-      setMyTickets(Array.isArray(j?.items) ? j.items : []);
-      setTicketsMeta(j?.meta || null);
-    } catch (e) {
-      console.error("loadMyTickets:", e);
-      setMyTickets([]);
-      setTicketsMeta(null);
-    }
-  }
-  useEffect(() => { loadMyTickets(); }, [wallet]);
+  useEffect(() => { fetchCredits(); loadMyTickets(); }, [wallet]);
 
   function addQuickPick() { setCart(prev => [...prev, quickPickOne()]); }
   function addBlankTicket() { setCart(prev => [...prev, { num1:1,num2:2,num3:3,num4:4,moonball:1 }]); }
@@ -121,8 +116,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   }
 
   const ticketsToCredit = useMemo(() => Math.min(credits, cart.length), [credits, cart.length]);
-  const ticketsToPay = useMemo(() => Math.max(0, cart.length - ticketsToCredit), [cart.length, ticketsToCredit]);
-  const totalTixCost = useMemo(() => ticketsToPay * TIX_PER_TICKET, [ticketsToPay]);
 
   function openXComposer() {
     const defaultText = encodeURIComponent("Grabbing my free #Moonticket 🎟️ Come play: https://moonticket.io");
@@ -161,6 +154,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
     setLoading(true);
     try {
+      // Prepare (credits-only flow returns ok + lockedCredits)
       const prep = await fetchJSON("/api/powerballEntryTx", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -173,32 +167,15 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       });
       if (!prep?.ok) throw new Error(prep?.error || "Failed to prepare");
 
-      const needLamports = Number(prep.estTotalLamports || 0);
-      if (needLamports > 0) {
-        const conn = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
-        const have = await conn.getBalance(new PublicKey(addr));
-        if (have < needLamports) {
-          const needSOL = (needLamports / 1e9).toFixed(6);
-          const haveSOL = (have / 1e9).toFixed(6);
-          throw new Error(`Not enough SOL for fees. Need ~${needSOL} SOL; you have ${haveSOL} SOL.`);
-        }
-      }
-
-      let signature = null;
-      if (prep.txBase64) {
-        const tx = Transaction.from(Buffer.from(prep.txBase64, "base64"));
-        const { signature: sig } = await window.solana.signAndSendTransaction(tx);
-        signature = sig;
-      }
-
+      // Finalize
       const fin = await fetchJSON("/api/powerballEntryFinalize", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
           wallet: addr,
-          signature,
+          signature: null,
           tickets: cart,
-          expectedTotalBase: prep.expectedTotalBase || 0,
+          expectedTotalBase: 0,
           lockedCredits: prep.lockedCredits || 0
         })
       });
@@ -207,8 +184,8 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       setCart([]);
       await onRefresh?.();
       await fetchCredits();
-      await loadMyTickets(); // <--- refresh the visible list
-      alert(`Tickets submitted: ${fin.inserted} (credits: ${prep.lockedCredits || 0}, paid: ${ticketsToPay})`);
+      await loadMyTickets();
+      alert(`Tickets submitted: ${fin.inserted} (credits used: ${prep.lockedCredits || 0})`);
     } catch (e) {
       console.error(e);
       alert(e.message);
@@ -225,8 +202,28 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     padding: "4px 6px",
   };
 
+  const btn = {
+    background: "#fbbf24",
+    color: "#000",
+    border: "none",
+    borderRadius: 8,
+    padding: "8px 12px",
+    fontWeight: 700,
+    cursor: "pointer",
+  };
+
+  const btnOutline = {
+    background: "transparent",
+    color: "#fbbf24",
+    border: "1px solid #fbbf24",
+    borderRadius: 8,
+    padding: "6px 10px",
+    fontWeight: 600,
+    cursor: "pointer",
+  };
+
   return (
-    <div style={{maxWidth:900, margin:"0 auto", padding:"24px"}}>
+    <div style={{maxWidth:900, margin:"0 auto", padding:"24px", paddingTop: "96px"}}>
       <h1 style={{marginBottom:8}}>Moontickets</h1>
       <div style={{opacity:0.8, marginBottom:16}}>
         Wallet: {wallet ? wallet.slice(0,4)+"…"+wallet.slice(-4) : "Not connected"}
@@ -237,7 +234,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap"}}>
           <div style={{fontWeight:600}}>Weekly Free Ticket</div>
           <div style={{display:"flex", gap:8}}>
-            <button onClick={openXComposer}>Post on X</button>
+            <button style={btnOutline} onClick={openXComposer}>Post on X</button>
           </div>
         </div>
         <div style={{display:"flex", gap:8, alignItems:"center", marginTop:8, flexWrap:"wrap"}}>
@@ -247,7 +244,9 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             onChange={e=>setTweetUrl(e.target.value)}
             placeholder="Paste tweet URL (required)"
           />
-          <button onClick={claimFree} disabled={loading || !tweetOk}>Claim Free Ticket</button>
+          <button style={btn} onClick={claimFree} disabled={loading || !tweetOk}>
+            Claim Free Ticket
+          </button>
         </div>
         {!tweetOk && tweetUrl && (
           <div style={{marginTop:6, fontSize:12, color:"#fbbf24"}}>
@@ -261,8 +260,8 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
       {/* Build tickets */}
       <div style={{display:"flex", gap:8, marginBottom:12, flexWrap:"wrap"}}>
-        <button onClick={addQuickPick}>+ Quick Pick</button>
-        <button onClick={addBlankTicket}>+ Add Ticket</button>
+        <button style={btnOutline} onClick={addQuickPick}>+ Quick Pick</button>
+        <button style={btnOutline} onClick={addBlankTicket}>+ Add Ticket</button>
       </div>
 
       {cart.map((t, idx) => (
@@ -299,7 +298,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
               {MOON_POOL.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
 
-            <button onClick={()=>updateTicket(idx, quickPickOne())}>Quick Pick</button>
+            <button style={btnOutline} onClick={()=>updateTicket(idx, quickPickOne())}>Quick Pick</button>
           </div>
           <div style={{marginTop:6, fontSize:12, opacity:0.7}}>
             4 unique 1–25 + Moonball 1–10.
@@ -307,56 +306,46 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         </div>
       ))}
 
-      {/* Totals */}
+      {/* Totals (trimmed to only what matters now) */}
       <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:12}}>
         <div><b>Total tickets:</b> {cart.length}</div>
         <div><b>Credits available:</b> {credits}</div>
         <div><b>Applying credits:</b> {ticketsToCredit}</div>
-        <div><b>Paying in TIX:</b> {ticketsToPay}</div>
-        <div><b>Total cost (TIX):</b> {new Intl.NumberFormat().format(totalTixCost)}</div>
       </div>
 
-      {/* Wallet / fees summary */}
+      {/* Wallet / misc */}
       <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:6, opacity:0.9}}>
         <div><b>TIX balance:</b> {new Intl.NumberFormat().format(tixBalance ?? 0)}</div>
         <div><b>SOL balance:</b> {solBalance.toFixed(6)}</div>
         <div><b>TIX per ticket:</b> {new Intl.NumberFormat().format(TIX_PER_TICKET)}</div>
-        <button onClick={() => { fetchCredits(); loadMyTickets(); }}>
+        <button
+          style={btnOutline}
+          onClick={async () => { await fetchCredits(); await loadMyTickets(); }}
+        >
           Refresh
         </button>
       </div>
 
       <div style={{marginTop:12}}>
-        <button disabled={loading || !cart.length} onClick={buyTickets}>
+        <button style={{...btn, padding:"10px 16px"}} disabled={loading || !cart.length} onClick={buyTickets}>
           {loading ? "Processing..." : `Buy Tickets Now`}
         </button>
       </div>
 
-      {/* --- NEW: My Tickets (current drawing) --- */}
+      {/* My tickets (current drawing) */}
       <div style={{marginTop:24}}>
         <div style={{fontWeight:700, marginBottom:8}}>My Tickets (current drawing)</div>
-        {myTickets.length === 0 ? (
-          <div style={{opacity:0.8}}>
-            No tickets yet for the current drawing.
-          </div>
+        {!myTickets.length ? (
+          <div style={{opacity:0.8}}>No tickets yet for the current drawing.</div>
         ) : (
           <ul style={{listStyle:"none", padding:0, margin:0}}>
-            {myTickets.map((e) => (
-              <li key={e.id} style={{marginBottom:6}}>
-                <span>
-                  {e.num1}-{e.num2}-{e.num3}-{e.num4} • MB {e.moonball}
-                </span>
-                <span style={{opacity:0.7, marginLeft:8, fontSize:12}}>
-                  {new Date(e.created_at).toLocaleString()}
-                </span>
+            {myTickets.map((t) => (
+              <li key={t.id} style={{marginBottom:6}}>
+                {t.num1}-{t.num2}-{t.num3}-{t.num4} · MB {t.moonball}
+                <span style={{opacity:0.6}}>  {new Date(t.created_at).toLocaleString()}</span>
               </li>
             ))}
           </ul>
-        )}
-        {ticketsMeta?.fallbackUsed && (
-          <div style={{marginTop:6, fontSize:12, opacity:0.7}}>
-            Showing recent tickets (no draw window found).
-          </div>
         )}
       </div>
     </div>
