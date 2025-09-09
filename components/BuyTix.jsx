@@ -91,6 +91,22 @@ export default function BuyTix() {
     setLoading(false);
   };
 
+  // --- Live preview calculations (no API change needed) ---
+  const sol = Number(solInput || 0);
+  const usdPreview =
+    solPriceUsd != null && !Number.isNaN(sol) ? sol * solPriceUsd : 0;
+  const creditsPreview = Math.floor(usdPreview + 1e-6); // 1 credit per $1
+  const tixPreview =
+    tixPriceUsd != null && tixPriceUsd > 0
+      ? Math.floor(usdPreview / tixPriceUsd)
+      : 0;
+
+  // After-purchase credits (from API response)
+  const creditsEarned =
+    result && result.success && typeof result.usdSpent === "number"
+      ? Math.floor(result.usdSpent + 1e-6)
+      : null;
+
   return (
     <div className="bg-black text-yellow-400 min-h-screen p-6 text-center pt-40">
       <h1 className="text-3xl font-bold mb-2">The Official Token of Moonticket</h1>
@@ -117,6 +133,16 @@ export default function BuyTix() {
             />
           </div>
 
+          {/* --- NEW: Live preview before purchase --- */}
+          {publicKey && solPriceUsd != null && tixPriceUsd != null && sol > 0 && (
+            <div className="mb-4">
+              <p>USD est: <strong>${usdPreview.toFixed(2)}</strong></p>
+              <p>You’ll receive: <strong>{tixPreview.toLocaleString()}</strong> TIX</p>
+              <p>You’ll get: <strong>{creditsPreview}</strong> ticket credit{creditsPreview === 1 ? "" : "s"}</p>
+            </div>
+          )}
+
+          {/* This block (existing) shows after purchase */}
           {result && result.success ? (
             <div className="mb-4">
               <p><strong>You’ll receive:</strong> {result.tixAmount.toLocaleString()} TIX</p>
@@ -136,6 +162,12 @@ export default function BuyTix() {
                 <p>Success! You bought {result.tixAmount.toLocaleString()} TIX</p>
                 <p>using {result.solAmount} SOL (~${result.usdSpent.toFixed(2)} USD)</p>
                 <p>Rate: ${result.tixPriceUsd?.toFixed(5)} | SOL: ${result.solPriceUsd?.toFixed(2)}</p>
+                {/* --- NEW: show credits earned after purchase --- */}
+                {creditsEarned != null && (
+                  <p className="mt-1">
+                    You received <strong>{creditsEarned}</strong> ticket credit{creditsEarned === 1 ? "" : "s"}.
+                  </p>
+                )}
               </div>
 
               <div className="mt-6 text-center">
