@@ -82,11 +82,13 @@ export default function BuyTix() {
       const prep = await prepRes.json();
       if (!prep.success || !prep.txBase64) throw new Error(prep.error || "Prepare failed");
 
-      // Buyer signs & sends the partially-signed tx
+      // Buyer signs & sends the partially-signed tx (Transaction object, not bytes)
       const bytes = Uint8Array.from(atob(prep.txBase64), (c) => c.charCodeAt(0));
-      const sigRes2 = await window.solana.signAndSendTransaction({ serializedTransaction: bytes });
+      const tx2 = Transaction.from(bytes);
+
+      const sigRes2 = await window.solana.signAndSendTransaction(tx2);
       const sig2 = typeof sigRes2 === "string" ? sigRes2 : sigRes2.signature;
-      await connection.confirmTransaction({ signature: sig2 }, "confirmed");
+      await connection.confirmTransaction(sig2, "confirmed");
 
       // Step 2b: Finalize (record purchase + credits)
       const finRes = await fetch("/api/buyTix", {

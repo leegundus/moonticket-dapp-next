@@ -11,7 +11,7 @@ import { createClient } from "@supabase/supabase-js";
 const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
 const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 const TIX_DECIMALS = 6;
-const TIX_PRICE_USD = 0.0001;
+const TIX_PRICE_USD = 0.0001; // $TIX price you’re already using
 
 const TREASURY_KEYPAIR = Keypair.fromSecretKey(
   bs58.decode(process.env.TREASURY_SECRET_KEY_BASE58)
@@ -32,10 +32,10 @@ export default async function handler(req, res) {
     const { walletAddress, solAmount, txSig } = req.body || {};
     if (!walletAddress) return res.status(400).json({ error: "Missing wallet" });
 
-    // Always fetch prices so both phases compute the same values server-side
+    // Fetch prices for consistent calc in both phases
     const priceRes = await fetch("https://moonticket.io/api/prices");
     const priceData = await priceRes.json();
-    const solPriceUsd = priceData?.solPriceUsd || 0;
+    const solPriceUsd = Number(priceData?.solPriceUsd || 0);
     const usdSpent = Number(solAmount || 0) * solPriceUsd;
     const tixAmount = Math.floor(usdSpent / TIX_PRICE_USD);
 
@@ -58,14 +58,20 @@ export default async function handler(req, res) {
       // Grant credits: 1 per whole $1
       const creditsToGrant = Math.floor(usdSpent + 1e-6);
       if (creditsToGrant > 0) {
-        await supabase.from("pending_tickets").upsert({ wallet: walletAddress, balance: 0 }, { onConflict: "wallet" });
+        // Ensure row exists, then increment balance
+        await supabase
+          .from("pending_tickets")
+          .upsert({ wallet: walletAddress, balance: 0 }, { onConflict: "wallet" });
+
         const { data: balRow } = await supabase
           .from("pending_tickets")
           .select("balance")
           .eq("wallet", walletAddress)
           .maybeSingle();
+
         const current = Number(balRow?.balance || 0);
         const newBalance = current + creditsToGrant;
+
         await supabase
           .from("pending_tickets")
           .update({ balance: newBalance, updated_at: new Date().toISOString() })
@@ -85,7 +91,7 @@ export default async function handler(req, res) {
     }
 
     // ---------------------------
-    // PHASE 1: Prepare (build partially-signed SPL transfer; buyer will pay fee)
+    // PHASE 1: Prepare (server partially signs; BUYER will pay fee)
     // ---------------------------
     if (!solAmount) return res.status(400).json({ error: "Missing amount" });
 
@@ -93,11 +99,11 @@ export default async function handler(req, res) {
     const ataInfo = await connection.getAccountInfo(recipientAta);
 
     const ixs = [];
-    // If buyer doesn't have a TIX ATA yet, include an ATA create where the payer is the buyer
+    // If buyer doesn't have a TIX ATA, include ATA create (payer = buyer)
     if (!ataInfo) {
       ixs.push(
         createAssociatedTokenAccountInstruction(
-          buyer,         // payer (buyer will sign/pay fee)
+          buyer,       // payer — buyer will sign & pay fee
           recipientAta,
           buyer,
           TIX_MINT
@@ -111,7 +117,7 @@ export default async function handler(req, res) {
       createTransferInstruction(
         treasuryAta,
         recipientAta,
-        TREASURY_WALLET, // authority (we will partially sign with treasury)
+        TREASURY_WALLET, // authority (treasury signs here)
         tixAmount * 10 ** TIX_DECIMALS,
         [],
         TOKEN_PROGRAM_ID
@@ -123,10 +129,10 @@ export default async function handler(req, res) {
     const { blockhash } = await connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
 
-    // Partial sign with treasury so the transfer authority is satisfied
+    // Partial sign with treasury to authorize the token transfer
     tx.sign(TREASURY_KEYPAIR);
 
-    // Serialize without requiring all signatures (buyer will add theirs)
+    // Serialize *without* requiring all signatures (buyer adds theirs)
     const serialized = tx.serialize({ requireAllSignatures: false });
     const txBase64 = Buffer.from(serialized).toString("base64");
 
