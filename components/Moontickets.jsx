@@ -83,6 +83,10 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const [tweetUrl, setTweetUrl] = useState("");
   const tweetOk = isValidTweetUrl(tweetUrl);
 
+  // --- NEW: My tickets (current draw) ---
+  const [myTickets, setMyTickets] = useState([]);
+  const [myTixLoading, setMyTixLoading] = useState(false);
+
   async function fetchCredits() {
     if (!wallet) return;
     try {
@@ -91,6 +95,22 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     } catch (e) { console.error(e); }
   }
   useEffect(() => { fetchCredits(); }, [wallet]);
+
+  // --- NEW: Load user's tickets for the current draw ---
+  async function loadMyTickets() {
+    if (!wallet) { setMyTickets([]); return; }
+    setMyTixLoading(true);
+    try {
+      const j = await fetchJSON(`/api/myTickets?wallet=${wallet}`);
+      setMyTickets(Array.isArray(j?.tickets) ? j.tickets : []);
+    } catch (e) {
+      console.error("loadMyTickets", e);
+      setMyTickets([]);
+    } finally {
+      setMyTixLoading(false);
+    }
+  }
+  useEffect(() => { if (wallet) loadMyTickets(); }, [wallet]);
 
   function addQuickPick() { setCart(prev => [...prev, quickPickOne()]); }
   function addBlankTicket() { setCart(prev => [...prev, { num1:1,num2:2,num3:3,num4:4,moonball:1 }]); }
@@ -124,6 +144,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       });
       if (!json?.ok) throw new Error(json?.error || "Claim failed");
       await fetchCredits();
+      await loadMyTickets(); // NEW: refresh list in case claim auto-redeems later
       setTweetUrl("");
       alert("Free ticket credited! It will be applied at checkout.");
     } catch (e) {
@@ -200,6 +221,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       setCart([]);
       await onRefresh?.();
       await fetchCredits();
+      await loadMyTickets(); // NEW: refresh tickets after successful purchase
       alert(`Tickets submitted: ${fin.inserted} (credits: ${prep.lockedCredits || 0}, paid: ${ticketsToPay})`);
     } catch (e) {
       console.error(e);
@@ -322,6 +344,32 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         <button disabled={loading || !cart.length} onClick={buyTickets}>
           {loading ? "Processing..." : `Buy Tickets Now`}
         </button>
+      </div>
+
+      {/* NEW: My tickets for current drawing */}
+      <div style={{marginTop:20}}>
+        <h3 style={{marginBottom:8}}>My Tickets (current drawing)</h3>
+        {myTixLoading ? (
+          <div style={{opacity:0.8}}>Loading…</div>
+        ) : myTickets.length === 0 ? (
+          <div style={{opacity:0.8}}>No tickets yet for the current drawing.</div>
+        ) : (
+          <div style={{display:"grid", gap:8}}>
+            {myTickets.map(t => (
+              <div key={t.id} style={{border:"1px solid #333", borderRadius:8, padding:8, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+                <div>
+                  <div style={{fontWeight:600}}>
+                    {t.num1}-{t.num2}-{t.num3}-{t.num4} &nbsp; | &nbsp; Moonball {t.moonball}
+                  </div>
+                  <div style={{fontSize:12, opacity:0.7}}>
+                    {new Date(t.created_at).toLocaleString()} · {t.entry_type || "credit"}
+                  </div>
+                </div>
+                <div style={{fontSize:12, opacity:0.7}}>#{t.id}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
