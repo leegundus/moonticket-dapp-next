@@ -68,6 +68,7 @@ export default async function handler(req, res) {
     const availableCredits = creditRows?.length || 0;
     const lockedCredits = Math.min(Number(useCredits) || 0, availableCredits, tickets.length);
 
+    // Cost math
     const TOKEN_DECIMALS = 6;
     const priceHuman = Number(tixCostPerTicket);
     if (!Number.isFinite(priceHuman) || priceHuman < 0) {
@@ -76,8 +77,18 @@ export default async function handler(req, res) {
     const payableCount = tickets.length - lockedCredits;
     const expectedTotalBase = Math.round(payableCount * priceHuman * 10 ** TOKEN_DECIMALS);
 
+    // If no payment needed, no tx, but still return a 0-fee estimate
     if (payableCount === 0) {
-      return res.status(200).json({ ok:true, txBase64:null, expectedTotalBase:0, lockedCredits });
+      return res.status(200).json({
+        ok:true,
+        txBase64:null,
+        expectedTotalBase:0,
+        lockedCredits,
+        feeLamports: 0,
+        rentLamports: 0,
+        willCreateUserAta: false,
+        estTotalLamports: 0
+      });
     }
 
     const userPub = new PublicKey(wallet);
@@ -85,16 +96,46 @@ export default async function handler(req, res) {
     const treasuryAta = await getAssociatedTokenAddress(TIX_MINT, TREASURY_WALLET, false);
 
     const tx = new Transaction();
+    let willCreateUserAta = false;
+    let willCreateTreasuryAta = false;
 
+    // Ensure user ATA (payer = user)
     try { await getAccount(connection, userAta); }
-    catch { tx.add(createAssociatedTokenAccountInstruction(userPub, userAta, userPub, TIX_MINT)); }
+    catch {
+      willCreateUserAta = true;
+      tx.add(createAssociatedTokenAccountInstruction(userPub, userAta, userPub, TIX_MINT));
+    }
 
+    // Ensure treasury ATA (payer = user). This should almost always exist.
     try { await getAccount(connection, treasuryAta); }
-    catch { tx.add(createAssociatedTokenAccountInstruction(userPub, treasuryAta, TREASURY_WALLET, TIX_MINT)); }
+    catch {
+      willCreateTreasuryAta = true;
+      tx.add(createAssociatedTokenAccountInstruction(userPub, treasuryAta, TREASURY_WALLET, TIX_MINT));
+    }
 
+    // Transfer user -> treasury
     tx.add(createTransferInstruction(userAta, treasuryAta, userPub, expectedTotalBase));
     tx.feePayer = userPub;
-    tx.recentBlockhash = (await connection.getLatestBlockhash("confirmed")).blockhash;
+
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash;
+
+    // ----- Fee & rent estimate -----
+    // Base fee (signatures + compute)
+    const feeLamports = await connection.getFeeForMessage(tx.compileMessage())
+      .then(v => Number(v?.value || 0))
+      .catch(() => 0);
+
+    // Rent for new ATAs (165 bytes each)
+    const RENT_BYTES = 165;
+    let rentLamports = 0;
+    if (willCreateUserAta) {
+      rentLamports += await connection.getMinimumBalanceForRentExemption(RENT_BYTES);
+    }
+    if (willCreateTreasuryAta) {
+      rentLamports += await connection.getMinimumBalanceForRentExemption(RENT_BYTES);
+    }
+    const estTotalLamports = feeLamports + rentLamports;
 
     const txBase64 = Buffer.from(
       tx.serialize({ requireAllSignatures: false })
@@ -104,7 +145,11 @@ export default async function handler(req, res) {
       ok:true,
       txBase64,
       expectedTotalBase,
-      lockedCredits
+      lockedCredits,
+      feeLamports,
+      rentLamports,
+      willCreateUserAta,
+      estTotalLamports
     });
   } catch (e) {
     console.error("powerballEntryTx error:", e);

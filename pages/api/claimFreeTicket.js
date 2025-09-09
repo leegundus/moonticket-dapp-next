@@ -61,6 +61,7 @@ export default async function handler(req, res) {
       .insert({
         wallet,
         ticket_type: "free",
+        source: "tweet",
         is_redeemed: true,
         is_consumed: false
       })

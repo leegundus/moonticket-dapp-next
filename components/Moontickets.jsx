@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 
 const range = (n, start=1) => Array.from({length:n}, (_,i)=>i+start);
 const MAIN_POOL = range(25, 1);
 const MOON_POOL = range(10, 1);
 const TIX_PER_TICKET = 10_000; // static: $1 = 10k TIX
-const TOKEN_DECIMALS = 6;
 
 function quickPickOne() {
   const pool = [...MAIN_POOL];
@@ -37,36 +36,21 @@ function isValidTweetUrl(u) {
   } catch { return false; }
 }
 
-/** Defensive fetch */
 async function fetchJSON(url, opts) {
   const res = await fetch(url, opts);
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch {}
-  if (!res.ok) {
-    throw new Error(data?.error || text || `HTTP ${res.status}`);
-  }
+  if (!res.ok) throw new Error(data?.error || text || `HTTP ${res.status}`);
   return data ?? {};
 }
 
 export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
-  // Robust wallet detection: prop, then Phantom (including onlyIfTrusted)
   const [wallet, setWallet] = useState(publicKey?.toString?.() || "");
   useEffect(() => { if (publicKey?.toString) setWallet(publicKey.toString()); }, [publicKey]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const s = window.solana;
-
-    // Try silent connect (fills wallet immediately if already trusted)
-    (async () => {
-      try {
-        if (!wallet && s?.connect) {
-          await s.connect({ onlyIfTrusted: true });
-          if (s?.publicKey) setWallet(s.publicKey.toString());
-        }
-      } catch {}
-    })();
-
     if (!wallet && s?.isConnected && s.publicKey) setWallet(s.publicKey.toString());
     const onConnect = () => setWallet(s?.publicKey?.toString() || "");
     const onAcct = (pk) => setWallet(pk?.toString?.() || "");
@@ -75,38 +59,23 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     return () => { s?.off?.("connect", onConnect); s?.off?.("accountChanged", onAcct); };
   }, [wallet]);
 
-  // On-chain TIX balance
-  const [tixBal, setTixBal] = useState(null);
-  const TIX_MINT = process.env.NEXT_PUBLIC_TIX_MINT;
-  const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL;
-
-  async function fetchTixBalance(ownerStr) {
-    try {
-      if (!ownerStr || !TIX_MINT || !RPC_URL) return setTixBal(null);
-      const conn = new Connection(RPC_URL, "confirmed");
-      const owner = new PublicKey(ownerStr);
-      const mint = new PublicKey(TIX_MINT);
-      const resp = await conn.getParsedTokenAccountsByOwner(owner, { mint });
-      let total = 0n;
-      for (const { account } of resp.value) {
-        const amt = account.data.parsed.info.tokenAmount.amount;
-        total += BigInt(amt);
-      }
-      setTixBal(Number(total) / 10 ** TOKEN_DECIMALS);
-    } catch (e) {
-      console.error("fetchTixBalance error:", e);
-      setTixBal(null);
+  // --- NEW: SOL balance ---
+  const [solBalance, setSolBalance] = useState(0);
+  const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || (typeof window !== "undefined" ? process.env.NEXT_PUBLIC_RPC_URL : "");
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSol() {
+      if (!wallet) return setSolBalance(0);
+      try {
+        const conn = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
+        const lamports = await conn.getBalance(new PublicKey(wallet));
+        if (!cancelled) setSolBalance(lamports / 1e9);
+      } catch { if (!cancelled) setSolBalance(0); }
     }
-  }
-
-  // Fetch balance ASAP when wallet appears
-  useEffect(() => { if (wallet) fetchTixBalance(wallet); }, [wallet]);
-
-  // After-action refresh helper
-  async function afterAnyActionRefresh() {
-    try { await onRefresh?.(); } catch {}
-    if (wallet) fetchTixBalance(wallet);
-  }
+    loadSol();
+    const id = setInterval(loadSol, 20_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [wallet]);
 
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -128,7 +97,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   function updateTicket(idx, patch) { setCart(prev => prev.map((t,i)=> i===idx ? {...t, ...patch} : t)); }
   function removeTicket(idx) { setCart(prev => prev.filter((_,i)=> i!==idx)); }
 
-  // Disable duplicate choices in the same ticket
   function isDisabledOption(ticketIdx, fieldKey, n) {
     const t = cart[ticketIdx] || {};
     const fields = ["num1","num2","num3","num4"].filter(f => f !== fieldKey);
@@ -140,9 +108,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const totalTixCost = useMemo(() => ticketsToPay * TIX_PER_TICKET, [ticketsToPay]);
 
   function openXComposer() {
-    const defaultText = encodeURIComponent(
-      "Grabbing my free #Moonticket 🎟️ Come play: https://moonticket.io"
-    );
+    const defaultText = encodeURIComponent("Grabbing my free #Moonticket 🎟️ Come play: https://moonticket.io");
     window.open(`https://x.com/intent/post?text=${defaultText}`, "_blank", "noopener,noreferrer");
   }
 
@@ -159,7 +125,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       if (!json?.ok) throw new Error(json?.error || "Claim failed");
       await fetchCredits();
       setTweetUrl("");
-      await afterAnyActionRefresh();
       alert("Free ticket credited! It will be applied at checkout.");
     } catch (e) {
       alert(e.message);
@@ -179,6 +144,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
     setLoading(true);
     try {
+      // 1) Prepare: get tx & fee estimate
       const prep = await fetchJSON("/api/powerballEntryTx", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -191,13 +157,33 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       });
       if (!prep?.ok) throw new Error(prep?.error || "Failed to prepare");
 
-      let signature = null;
-      if (prep.txBase64) {
-        const bytes = Uint8Array.from(atob(prep.txBase64), c=>c.charCodeAt(0));
-        const signed = await window.solana.signAndSendTransaction({ serializedTransaction: bytes });
-        signature = signed?.signature || signed;
+      // SOL pre-check (estimate may be 0 if credits cover all)
+      const needLamports = Number(prep.estTotalLamports || 0);
+      if (needLamports > 0) {
+        // Refresh local balance once before prompt
+        try {
+          const conn = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
+          const lamports = await conn.getBalance(new PublicKey(addr));
+          const have = lamports;
+          if (have < needLamports) {
+            const needSOL = (needLamports / 1e9).toFixed(6);
+            const haveSOL = (have / 1e9).toFixed(6);
+            throw new Error(`Not enough SOL for fees. Need ~${needSOL} SOL; you have ${haveSOL} SOL.`);
+          }
+        } catch (e) {
+          throw e;
+        }
       }
 
+      let signature = null;
+      if (prep.txBase64) {
+        // sign and send (Phantom)
+        const tx = Transaction.from(Buffer.from(prep.txBase64, "base64"));
+        const { signature: sig } = await window.solana.signAndSendTransaction(tx);
+        signature = sig;
+      }
+
+      // 2) Finalize
       const fin = await fetchJSON("/api/powerballEntryFinalize", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -212,7 +198,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       if (!fin?.ok) throw new Error(fin?.error || "Finalize failed");
 
       setCart([]);
-      await afterAnyActionRefresh();
+      await onRefresh?.();
       await fetchCredits();
       alert(`Tickets submitted: ${fin.inserted} (credits: ${prep.lockedCredits || 0}, paid: ${ticketsToPay})`);
     } catch (e) {
@@ -253,7 +239,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             onChange={e=>setTweetUrl(e.target.value)}
             placeholder="Paste tweet URL (required)"
           />
-        <button onClick={claimFree} disabled={loading || !tweetOk}>Claim Free Ticket</button>
+          <button onClick={claimFree} disabled={loading || !tweetOk}>Claim Free Ticket</button>
         </div>
         {!tweetOk && tweetUrl && (
           <div style={{marginTop:6, fontSize:12, color:"#fbbf24"}}>
@@ -273,16 +259,12 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
       {cart.map((t, idx) => (
         <div key={idx} style={{position:"relative", border:"1px solid #333", borderRadius:8, padding:12, marginBottom:8}}>
-          {/* “X” remove */}
           <button
             aria-label="Remove"
             title="Remove ticket"
             onClick={()=>removeTicket(idx)}
-            style={{
-              position:"absolute", top:6, right:8,
-              background:"transparent", border:"none",
-              color:"#bbb", fontSize:18, cursor:"pointer", lineHeight:1
-            }}
+            style={{ position:"absolute", top:6, right:8, background:"transparent", border:"none",
+                     color:"#bbb", fontSize:18, cursor:"pointer", lineHeight:1 }}
           >×</button>
 
           <div style={{display:"flex", gap:8, alignItems:"center", flexWrap:"wrap"}}>
@@ -317,16 +299,23 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         </div>
       ))}
 
-      {/* Totals + (moved) stats */}
-      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:12, gap:12, flexWrap:"wrap"}}>
+      {/* Totals */}
+      <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:12}}>
         <div><b>Total tickets:</b> {cart.length}</div>
-        <div><b>Credits this draw:</b> {credits}</div>
+        <div><b>Credits available:</b> {credits}</div>
         <div><b>Applying credits:</b> {ticketsToCredit}</div>
         <div><b>Paying in TIX:</b> {ticketsToPay}</div>
         <div><b>Total cost (TIX):</b> {new Intl.NumberFormat().format(totalTixCost)}</div>
-        <div><b>TIX balance:</b> {tixBal == null ? "—" : new Intl.NumberFormat().format(tixBal)}</div>
+      </div>
+
+      {/* NEW: Wallet / fees summary */}
+      <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:6, opacity:0.9}}>
+        <div><b>TIX balance:</b> {new Intl.NumberFormat().format(tixBalance ?? 0)}</div>
+        <div><b>SOL balance:</b> {solBalance.toFixed(6)}</div>
         <div><b>TIX per ticket:</b> {new Intl.NumberFormat().format(TIX_PER_TICKET)}</div>
-        <button onClick={() => wallet && fetchTixBalance(wallet)}>Refresh</button>
+        <button onClick={() => { /* manual refresh */ }}>
+          Refresh
+        </button>
       </div>
 
       <div style={{marginTop:12}}>

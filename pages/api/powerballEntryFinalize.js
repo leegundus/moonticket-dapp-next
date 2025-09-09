@@ -1,4 +1,4 @@
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 import { createClient } from "@supabase/supabase-js";
 import bs58 from "bs58";
 import { Keypair } from "@solana/web3.js";
@@ -38,9 +38,10 @@ export default async function handler(req, res) {
     const v = validateTickets(tickets);
     if (v) return res.status(400).json({ ok:false, error: v });
 
-    // Verify payment if expected
+    // Verify payment when expected
     if (Number(expectedTotalBase) > 0) {
       if (!signature) return res.status(400).json({ ok:false, error:"Missing signature" });
+
       const parsed = await connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
       if (!parsed) return res.status(400).json({ ok:false, error:"Transaction not found" });
 
@@ -58,7 +59,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // Consume credits (most recent draw window)
+    // Consume credits (latest draw window)
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
       .select("draw_date")
@@ -92,7 +93,7 @@ export default async function handler(req, res) {
       if (ue) return res.status(500).json({ ok:false, error: ue.message });
     }
 
-    // Insert entries (credits first, then paid)
+    // Insert entries
     const creditTypes = (creditsRows || []).map(r => r.ticket_type || "promo");
     const c = Number(lockedCredits);
     const creditEntries = tickets.slice(0, c).map((t, i) => ({
