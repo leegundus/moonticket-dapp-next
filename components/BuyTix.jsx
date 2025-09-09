@@ -70,8 +70,8 @@ export default function BuyTix() {
       const sig1 = typeof sigRes === "string" ? sigRes : sigRes.signature;
       await connection.confirmTransaction({ signature: sig1 }, "confirmed");
 
-      // Step 2a: Prepare SPL-token transfer where BUYER pays fee (server partially signs)
-      const prepRes = await fetch("/api/buyTix", {
+      // Step 2: Trigger TIX transfer from backend (server signs & sends; no Phantom warning)
+        const res2 = await fetch("/api/buyTix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -79,32 +79,11 @@ export default function BuyTix() {
           solAmount: parseFloat(solInput),
         }),
       });
-      const prep = await prepRes.json();
-      if (!prep.success || !prep.txBase64) throw new Error(prep.error || "Prepare failed");
+     const data = await res2.json();
+     if (!data.success) throw new Error(data.error || "TIX transfer failed");
 
-      // Buyer signs & sends the partially-signed tx (Transaction object, not bytes)
-      const bytes = Uint8Array.from(atob(prep.txBase64), (c) => c.charCodeAt(0));
-      const tx2 = Transaction.from(bytes);
-
-      const sigRes2 = await window.solana.signAndSendTransaction(tx2);
-      const sig2 = typeof sigRes2 === "string" ? sigRes2 : sigRes2.signature;
-      await connection.confirmTransaction(sig2, "confirmed");
-
-      // Step 2b: Finalize (record purchase + credits)
-      const finRes = await fetch("/api/buyTix", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          walletAddress: publicKey.toBase58(),
-          solAmount: parseFloat(solInput),
-          txSig: sig2,
-        }),
-      });
-      const data = await finRes.json();
-      if (!data.success) throw new Error(data.error || "Finalize failed");
-
-      setResult(data);
-      fetchSolBalance();
+    setResult(data);
+    fetchSolBalance();  
     } catch (err) {
       console.error("Buy TIX failed:", err);
       setResult({ success: false, error: "Failed to buy TIX" });
