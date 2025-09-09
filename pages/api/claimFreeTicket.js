@@ -23,38 +23,50 @@ export default async function handler(req, res) {
   try {
     const { wallet, tweetUrl } = req.body || {};
     if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
+
+    // Still require a valid tweet URL, but do NOT store it.
     if (!tweetUrl || !isValidTweetUrl(tweetUrl)) {
       return res.status(400).json({ ok:false, error:"Valid X/Twitter status URL required" });
     }
 
-    // Anchor to latest draw (credits scoped per draw)
+    // Latest draw start
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
-      .select("id")
+      .select("draw_date")
       .order("draw_date", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
 
-    const drawId = lastDraw?.id || null;
+    const drawStart = lastDraw?.draw_date || null;
 
+    // One free credit per wallet per draw (by timestamp window)
+    if (drawStart) {
+      const { count, error: ce } = await supabase
+        .from("pending_tickets")
+        .select("*", { count: "exact", head: true })
+        .eq("wallet", wallet)
+        .eq("is_redeemed", true)
+        .eq("is_consumed", false)
+        .gte("created_at", drawStart);
+      if (ce) return res.status(500).json({ ok:false, error: ce.message });
+      if ((count || 0) > 0) {
+        return res.status(409).json({ ok:false, error:"Already claimed a free ticket this draw" });
+      }
+    }
+
+    // Insert credit (NO tweet_url field)
     const { data: row, error: ie } = await supabase
       .from("pending_tickets")
       .insert({
         wallet,
-        draw_id: drawId,
         ticket_type: "free",
-        is_redeemed: true,  // credit model
-        is_consumed: false,
-        tweet_url: tweetUrl
+        is_redeemed: true,
+        is_consumed: false
       })
       .select("id")
       .single();
-
-    if (ie) {
-      if (ie.code === "23505") return res.status(409).json({ ok:false, error:"Already claimed this draw" });
-      return res.status(500).json({ ok:false, error: ie.message });
-    }
+    if (ie) return res.status(500).json({ ok:false, error: ie.message });
 
     return res.status(200).json({ ok:true, pending_ticket_id: row.id });
   } catch (e) {
@@ -62,3 +74,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok:false, error: e.message || "Server error" });
   }
 }
+

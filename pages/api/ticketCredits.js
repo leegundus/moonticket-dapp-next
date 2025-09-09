@@ -16,22 +16,24 @@ export default async function handler(req, res) {
 
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
-      .select("id")
+      .select("draw_date")
       .order("draw_date", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
 
-    const drawId = lastDraw?.id || null;
+    const drawStart = lastDraw?.draw_date || null;
 
-    const { count, error } = await supabase
+    let q = supabase
       .from("pending_tickets")
       .select("*", { count: "exact", head: true })
       .eq("wallet", wallet)
       .eq("is_redeemed", true)
-      .eq("is_consumed", false)
-      .eq("draw_id", drawId);
+      .eq("is_consumed", false);
 
+    if (drawStart) q = q.gte("created_at", drawStart);
+
+    const { count, error } = await q;
     if (error) return res.status(500).json({ ok:false, error: error.message });
 
     return res.status(200).json({ ok:true, credits: count || 0 });

@@ -5,8 +5,6 @@ import { Keypair } from "@solana/web3.js";
 
 const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
 const TIX_MINT = process.env.NEXT_PUBLIC_TIX_MINT;
-
-// derive treasury public (same as buyTix.js)
 const TREASURY_KEYPAIR = Keypair.fromSecretKey(
   bs58.decode(process.env.TREASURY_SECRET_KEY_BASE58)
 );
@@ -40,16 +38,14 @@ export default async function handler(req, res) {
     const v = validateTickets(tickets);
     if (v) return res.status(400).json({ ok:false, error: v });
 
-    // Verify payment when expected
+    // Verify payment if expected
     if (Number(expectedTotalBase) > 0) {
       if (!signature) return res.status(400).json({ ok:false, error:"Missing signature" });
-
       const parsed = await connection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
       if (!parsed) return res.status(400).json({ ok:false, error:"Transaction not found" });
 
       const pre = parsed.meta?.preTokenBalances || [];
       const post = parsed.meta?.postTokenBalances || [];
-
       const preBal = pre.find(b => b.mint === TIX_MINT && b.owner === TREASURY_WALLET.toBase58());
       const postBal = post.find(b => b.mint === TIX_MINT && b.owner === TREASURY_WALLET.toBase58());
       if (!postBal) return res.status(400).json({ ok:false, error:"Treasury TIX balance not present in tx" });
@@ -62,36 +58,33 @@ export default async function handler(req, res) {
       }
     }
 
-    // Latest draw
+    // Consume credits (most recent draw window)
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
-      .select("id")
+      .select("draw_date")
       .order("draw_date", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
-    const drawId = lastDraw?.id || null;
+    const drawStart = lastDraw?.draw_date || null;
 
-    // Consume credits (FIFO)
-    let creditTypes = [];
+    let fetchCredits = supabase
+      .from("pending_tickets")
+      .select("id, ticket_type, created_at")
+      .eq("wallet", wallet)
+      .eq("is_redeemed", true)
+      .eq("is_consumed", false)
+      .order("created_at", { ascending: true });
+    if (drawStart) fetchCredits = fetchCredits.gte("created_at", drawStart);
+
+    const { data: creditsRows, error: ce } = await fetchCredits.limit(Number(lockedCredits));
+    if (ce) return res.status(500).json({ ok:false, error: ce.message });
+    if ((creditsRows?.length || 0) < Number(lockedCredits)) {
+      return res.status(400).json({ ok:false, error:"Insufficient credits" });
+    }
+
     if (Number(lockedCredits) > 0) {
-      const { data: creditsRows, error: ce } = await supabase
-        .from("pending_tickets")
-        .select("id,ticket_type")
-        .eq("wallet", wallet)
-        .eq("is_redeemed", true)
-        .eq("is_consumed", false)
-        .eq("draw_id", drawId)
-        .order("created_at", { ascending: true })
-        .limit(Number(lockedCredits));
-      if (ce) return res.status(500).json({ ok:false, error: ce.message });
-      if (!creditsRows || creditsRows.length < Number(lockedCredits)) {
-        return res.status(400).json({ ok:false, error:"Insufficient credits" });
-      }
-
       const ids = creditsRows.map(r => r.id);
-      creditTypes = creditsRows.map(r => r.ticket_type || "promo");
-
       const { error: ue } = await supabase
         .from("pending_tickets")
         .update({ is_consumed: true })
@@ -100,6 +93,7 @@ export default async function handler(req, res) {
     }
 
     // Insert entries (credits first, then paid)
+    const creditTypes = (creditsRows || []).map(r => r.ticket_type || "promo");
     const c = Number(lockedCredits);
     const creditEntries = tickets.slice(0, c).map((t, i) => ({
       wallet,
