@@ -22,60 +22,67 @@ export default async function handler(req,res){
     const v = validateTickets(tickets);
     if (v) return res.status(400).json({ ok:false, error: v });
 
-    // How many credits to consume
     const N = Number(lockedCredits || tickets.length);
     if (!Number.isFinite(N) || N <= 0) {
       return res.status(400).json({ ok:false, error:"Invalid credit count" });
     }
 
-    // --- Load current balance
+    // 1) Read balance
     const { data: balRow, error: balErr } = await supabase
       .from("pending_tickets")
       .select("balance")
       .eq("wallet", wallet)
       .maybeSingle();
-
-    if (balErr) return res.status(500).json({ ok:false, error: balErr.message });
+    if (balErr) return res.status(500).json({ ok:false, error: `Balance read failed: ${balErr.message}` });
 
     const current = Number(balRow?.balance || 0);
     if (current < N) {
-      return res.status(400).json({ ok:false, error:"Insufficient credits (race or mismatch). Please refresh." });
+      return res.status(400).json({ ok:false, error:`Insufficient credits. Have ${current}, need ${N}. Please refresh.` });
     }
 
-    // --- Optimistic concurrency: set balance to (current - N) iff it is still `current`
+    // 2) Compare-and-swap decrement
     const newBalance = current - N;
     const { data: updRows, error: updErr } = await supabase
       .from("pending_tickets")
       .update({ balance: newBalance, updated_at: new Date().toISOString() })
       .eq("wallet", wallet)
-      .eq("balance", current)               // compare-and-swap guard
+      .eq("balance", current) // CAS guard
       .select("balance");
-
-    if (updErr) return res.status(500).json({ ok:false, error: updErr.message });
+    if (updErr) return res.status(500).json({ ok:false, error: `Balance update failed: ${updErr.message}` });
     if (!updRows || updRows.length === 0) {
-      // Another request changed the balance between read and write
-      return res.status(409).json({ ok:false, error:"Balance changed. Please refresh and try again." });
+      return res.status(409).json({ ok:false, error:"Balance changed during checkout. Please refresh." });
     }
 
-    // --- Insert entries
+    // 3) Insert entries
+    const nowIso = new Date().toISOString();
     const rows = tickets.map(t => ({
       wallet,
-      entry_type: "credit",
+      entry_type: "credit",     // change here if your schema expects another fixed value
       num1: t.num1, num2: t.num2, num3: t.num3, num4: t.num4, moonball: t.moonball,
+      created_at: nowIso
     }));
 
-    const { error: insErr } = await supabase.from("entries").insert(rows);
+    const { data: inserted, error: insErr } = await supabase
+      .from("entries")
+      .insert(rows)
+      .select("id"); // return IDs so we can confirm
+
     if (insErr) {
-      // Best-effort rollback of balance if inserts fail
+      // Roll back the balance if inserts fail
       await supabase
         .from("pending_tickets")
         .update({ balance: current, updated_at: new Date().toISOString() })
         .eq("wallet", wallet)
         .eq("balance", newBalance);
-      return res.status(500).json({ ok:false, error: insErr.message });
+      return res.status(500).json({ ok:false, error: `Insert failed: ${insErr.message}` });
     }
 
-    return res.status(200).json({ ok:true, inserted: rows.length, newBalance });
+    return res.status(200).json({
+      ok:true,
+      inserted: inserted?.length || 0,
+      entryIds: inserted?.map(r => r.id) || [],
+      newBalance
+    });
   }catch(e){
     console.error("powerballEntryFinalize error:", e);
     return res.status(500).json({ ok:false, error: e.message || "Server error" });
