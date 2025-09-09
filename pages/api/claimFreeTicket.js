@@ -1,11 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-// basic X/Twitter status URL check (we still require a URL, we do not store it)
+// Keep the URL check so users paste a real X/Twitter post
 function isValidTweetUrl(u) {
   try {
     const url = new URL(u);
@@ -29,7 +25,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok:false, error:"Valid X/Twitter status URL required" });
     }
 
-    // latest draw (your schema uses draw_date)
+    // Latest draw (your schema uses draw_date)
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
       .select("id, draw_date")
@@ -39,38 +35,48 @@ export default async function handler(req, res) {
     if (de) return res.status(500).json({ ok:false, error: de.message });
 
     const drawId = lastDraw?.id ?? null;
-
-    // one free credit per wallet per draw
-    if (drawId) {
-      const { data: already } = await supabase
-        .from("pending_tickets")
-        .select("id")
-        .eq("wallet", wallet)
-        .eq("draw_id", drawId)
-        .eq("source", "tweet")
-        .limit(1);
-      if (already && already.length) {
-        return res.status(200).json({ ok:false, error:"Already claimed free ticket for this draw" });
-      }
+    if (!drawId) {
+      return res.status(400).json({ ok:false, error:"No active draw found" });
     }
 
-    // Insert a row into pending_tickets (row-per-credit model)
-    // NOTE: your table requires `source` NOT NULL → set 'tweet'.
-    const insertRow = {
-      wallet,
-      draw_id: drawId,                 // nullable is fine if no draw
-      source: "tweet",                 // <— important (fixes your NULL error)
-      is_redeemed: false,
-      is_consumed: false,
-      created_at: new Date().toISOString(),
-    };
+    // Prevent double-claim per draw using a unique log
+    const { error: insLogErr } = await supabase
+      .from("free_claims")
+      .insert({ wallet, draw_id: drawId, created_at: new Date().toISOString() });
 
-    const { error: ie } = await supabase.from("pending_tickets").insert(insertRow);
-    if (ie) return res.status(500).json({ ok:false, error: ie.message });
+    if (insLogErr) {
+      // unique violation means they already claimed
+      if (insLogErr.code === "23505") {
+        return res.status(200).json({ ok:false, error:"Already claimed free ticket for this draw" });
+      }
+      return res.status(500).json({ ok:false, error: insLogErr.message });
+    }
 
-    return res.status(200).json({ ok:true, credited: 1 });
+    // Upsert balance row then increment by 1
+    await supabase
+      .from("pending_tickets")
+      .upsert({ wallet, balance: 0 }, { onConflict: "wallet" });
+
+    const { data: balRow, error: balErr } = await supabase
+      .from("pending_tickets")
+      .select("balance")
+      .eq("wallet", wallet)
+      .maybeSingle();
+
+    if (balErr) return res.status(500).json({ ok:false, error: balErr.message });
+
+    const current = Number(balRow?.balance || 0);
+    const newBalance = current + 1;
+
+    const { error: updErr } = await supabase
+      .from("pending_tickets")
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+      .eq("wallet", wallet);
+
+    if (updErr) return res.status(500).json({ ok:false, error: updErr.message });
+
+    return res.status(200).json({ ok:true, credited: 1, balance: newBalance });
   } catch (e) {
     return res.status(500).json({ ok:false, error: e.message });
   }
 }
-

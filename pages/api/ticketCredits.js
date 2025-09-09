@@ -10,19 +10,19 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok:false, error:"Method not allowed" });
   }
   try {
-    const wallet = req.query.wallet;
+    const { wallet } = req.query || {};
     if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
 
-    // Count any pending_tickets rows not yet consumed (works for both 'tweet' & ‘purchase’ sources)
-    const { data: rows, error } = await supabase
+    const { data, error } = await supabase
       .from("pending_tickets")
-      .select("id", { count: "exact", head: false })
+      .select("balance")
       .eq("wallet", wallet)
-      .eq("is_redeemed", false)
-      .eq("is_consumed", false);
+      .maybeSingle();
 
     if (error) return res.status(500).json({ ok:false, error: error.message });
-    return res.status(200).json({ ok:true, credits: rows?.length || 0 });
+
+    const credits = Number(data?.balance || 0);
+    return res.status(200).json({ ok:true, credits });
   } catch (e) {
     return res.status(500).json({ ok:false, error: e.message });
   }
