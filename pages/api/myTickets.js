@@ -2,8 +2,15 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // server key so RLS won't hide rows
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// Helper: ISO string (UTC) for N days ago
+function daysAgoISO(n) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString();
+}
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -14,7 +21,7 @@ export default async function handler(req, res) {
     const wallet = (req.query.wallet || "").trim();
     if (!wallet) return res.status(400).json({ ok: false, error: "Missing wallet" });
 
-    // 1) Latest draw_date (your schema uses draw_date)
+    // 1) Get the latest draw_date (your schema’s column name)
     const { data: lastDraw, error: drawErr } = await supabase
       .from("draws")
       .select("draw_date")
@@ -23,44 +30,57 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (drawErr) {
-      return res.status(500).json({ ok: false, error: drawErr.message });
+      return res.status(500).json({ ok: false, error: `draws query: ${drawErr.message}` });
     }
 
-    const sinceIso = lastDraw?.draw_date || "1970-01-01T00:00:00Z";
+    // Defensive window:
+    // - If there IS a draw_date and it's not in the future → start from that.
+    // - If draw_date is in the future (bad clock / manual insert) → use 14 days lookback.
+    // - If there is NO draw yet → 14 days lookback.
+    const nowIso = new Date().toISOString();
+    const latestDrawIso = lastDraw?.draw_date || null;
+    const drawIsFuture = latestDrawIso ? new Date(latestDrawIso).getTime() > Date.now() : false;
 
-    // 2) Tickets for the current drawing
-    const { data: currentEntries, error: entErr } = await supabase
+    const windowStartIso = (!latestDrawIso || drawIsFuture)
+      ? daysAgoISO(14)                 // fallback window
+      : latestDrawIso;                 // normal: since last draw
+    const windowEndIso = nowIso;
+
+    // 2) Entries for this wallet within the window
+    const { data: entries, error: entErr } = await supabase
       .from("entries")
       .select("id, created_at, num1, num2, num3, num4, moonball, entry_type")
       .eq("wallet", wallet)
-      .gte("created_at", sinceIso)
+      .gte("created_at", windowStartIso)
+      .lte("created_at", windowEndIso)
       .order("created_at", { ascending: false })
       .limit(200);
 
     if (entErr) {
-      return res.status(500).json({ ok: false, error: entErr.message });
+      return res.status(500).json({ ok: false, error: `entries query: ${entErr.message}` });
     }
 
-    // 3) Helpful fallback for visibility:
-    // If none matched the draw filter, also return the last few tickets (unfiltered)
-    // so the UI can still show *something* while we verify draw_date vs created_at.
+    // 3) If still empty, return last 10 tickets (unfiltered) so the UI can show *something*
     let fallback = [];
-    if (!currentEntries || currentEntries.length === 0) {
-      const { data: lastEntries } = await supabase
+    if (!entries || entries.length === 0) {
+      const { data: last10 } = await supabase
         .from("entries")
         .select("id, created_at, num1, num2, num3, num4, moonball, entry_type")
         .eq("wallet", wallet)
         .order("created_at", { ascending: false })
         .limit(10);
-      fallback = lastEntries || [];
+      fallback = last10 || [];
     }
 
     return res.status(200).json({
       ok: true,
-      items: currentEntries || [],
+      items: entries || [],
       meta: {
-        sinceDraw: sinceIso,
-        fallbackUsed: (currentEntries || []).length === 0,
+        windowStart: windowStartIso,
+        windowEnd: windowEndIso,
+        latestDrawIso: latestDrawIso,
+        drawIsFuture,
+        fallbackUsed: (entries || []).length === 0,
         fallbackItems: fallback
       }
     });
