@@ -86,6 +86,34 @@ export default async function handler(req, res) {
       created_at: new Date().toISOString()
     });
 
+    // === NEW: increment pending_tickets balance (1 credit per whole $1 spent) ===
+    const creditsToGrant = Math.floor(usdSpent + 1e-6);
+    if (creditsToGrant > 0) {
+      // Ensure a row exists for this wallet with balance 0
+      await supabase
+        .from("pending_tickets")
+        .upsert({ wallet: walletAddress, balance: 0 });
+
+      // Read current balance, then set new balance = old + creditsToGrant
+      const { data: balRow, error: balErr } = await supabase
+        .from("pending_tickets")
+        .select("balance")
+        .eq("wallet", walletAddress)
+        .maybeSingle();
+
+      if (!balErr) {
+        const current = Number(balRow?.balance || 0);
+        const newBalance = current + creditsToGrant;
+        await supabase
+          .from("pending_tickets")
+          .update({ balance: newBalance, updated_at: new Date().toISOString() })
+          .eq("wallet", walletAddress);
+      } else {
+        console.error("pending_tickets balance read error:", balErr);
+      }
+    }
+    // === END NEW ===
+
     return res.status(200).json({
       success: true,
       txid,
