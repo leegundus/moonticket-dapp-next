@@ -29,96 +29,113 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { walletAddress, solAmount } = req.body;
-    if (!walletAddress || !solAmount) {
-      return res.status(400).json({ error: "Missing wallet or amount" });
-    }
+    const { walletAddress, solAmount, txSig } = req.body || {};
+    if (!walletAddress) return res.status(400).json({ error: "Missing wallet" });
 
-    const recipient = new PublicKey(walletAddress);
-    const ata = await getAssociatedTokenAddress(TIX_MINT, recipient);
-    const ataInfo = await connection.getAccountInfo(ata);
-    const instructions = [];
-
-    if (!ataInfo) {
-      instructions.push(
-        createAssociatedTokenAccountInstruction(
-          TREASURY_WALLET,
-          ata,
-          recipient,
-          TIX_MINT
-        )
-      );
-    }
-
+    // Always fetch prices so both phases compute the same values server-side
     const priceRes = await fetch("https://moonticket.io/api/prices");
     const priceData = await priceRes.json();
     const solPriceUsd = priceData?.solPriceUsd || 0;
-    const usdSpent = solAmount * solPriceUsd;
+    const usdSpent = Number(solAmount || 0) * solPriceUsd;
     const tixAmount = Math.floor(usdSpent / TIX_PRICE_USD);
 
-    const transferIx = createTransferInstruction(
-      await getAssociatedTokenAddress(TIX_MINT, TREASURY_WALLET),
-      ata,
-      TREASURY_WALLET,
-      tixAmount * 10 ** TIX_DECIMALS,
-      [],
-      TOKEN_PROGRAM_ID
-    );
+    const buyer = new PublicKey(walletAddress);
 
-    instructions.push(transferIx);
+    // ---------------------------
+    // PHASE 2: Finalize (client already sent SPL transfer and gives us txSig)
+    // ---------------------------
+    if (txSig) {
+      // Record purchase
+      await supabase.from("purchases").insert({
+        wallet: walletAddress,
+        amount_usd: usdSpent,
+        tix_amount: tixAmount,
+        sol_amount: Number(solAmount || 0),
+        tx_sig: txSig,
+        created_at: new Date().toISOString(),
+      });
 
-    const tx = new Transaction().add(...instructions);
-    tx.feePayer = TREASURY_WALLET;
-
-    const { blockhash } = await connection.getLatestBlockhash();
-    tx.recentBlockhash = blockhash;
-    tx.sign(TREASURY_KEYPAIR);
-
-    const txid = await connection.sendRawTransaction(tx.serialize());
-    await connection.confirmTransaction(txid, "confirmed");
-
-    await supabase.from("purchases").insert({
-      wallet: walletAddress,
-      amount_usd: usdSpent,
-      tix_amount: tixAmount,
-      sol_amount: solAmount,
-      tx_sig: txid,
-      created_at: new Date().toISOString()
-    });
-
-    // === NEW: increment pending_tickets balance (1 credit per whole $1 spent) ===
-    const creditsToGrant = Math.floor(usdSpent + 1e-6);
-    if (creditsToGrant > 0) {
-      // Ensure a row exists for this wallet with balance 0
-      await supabase
-        .from("pending_tickets")
-        .upsert({ wallet: walletAddress, balance: 0 });
-
-      // Read current balance, then set new balance = old + creditsToGrant
-      const { data: balRow, error: balErr } = await supabase
-        .from("pending_tickets")
-        .select("balance")
-        .eq("wallet", walletAddress)
-        .maybeSingle();
-
-      if (!balErr) {
+      // Grant credits: 1 per whole $1
+      const creditsToGrant = Math.floor(usdSpent + 1e-6);
+      if (creditsToGrant > 0) {
+        await supabase.from("pending_tickets").upsert({ wallet: walletAddress, balance: 0 }, { onConflict: "wallet" });
+        const { data: balRow } = await supabase
+          .from("pending_tickets")
+          .select("balance")
+          .eq("wallet", walletAddress)
+          .maybeSingle();
         const current = Number(balRow?.balance || 0);
         const newBalance = current + creditsToGrant;
         await supabase
           .from("pending_tickets")
           .update({ balance: newBalance, updated_at: new Date().toISOString() })
           .eq("wallet", walletAddress);
-      } else {
-        console.error("pending_tickets balance read error:", balErr);
       }
+
+      return res.status(200).json({
+        success: true,
+        txid: txSig,
+        tixAmount,
+        solAmount: Number(solAmount || 0),
+        usdSpent,
+        tixPriceUsd: TIX_PRICE_USD,
+        solPriceUsd,
+        creditsGranted: Math.floor(usdSpent + 1e-6),
+      });
     }
-    // === END NEW ===
+
+    // ---------------------------
+    // PHASE 1: Prepare (build partially-signed SPL transfer; buyer will pay fee)
+    // ---------------------------
+    if (!solAmount) return res.status(400).json({ error: "Missing amount" });
+
+    const recipientAta = await getAssociatedTokenAddress(TIX_MINT, buyer);
+    const ataInfo = await connection.getAccountInfo(recipientAta);
+
+    const ixs = [];
+    // If buyer doesn't have a TIX ATA yet, include an ATA create where the payer is the buyer
+    if (!ataInfo) {
+      ixs.push(
+        createAssociatedTokenAccountInstruction(
+          buyer,         // payer (buyer will sign/pay fee)
+          recipientAta,
+          buyer,
+          TIX_MINT
+        )
+      );
+    }
+
+    // Transfer from treasury ATA -> buyer ATA; authority = TREASURY_WALLET
+    const treasuryAta = await getAssociatedTokenAddress(TIX_MINT, TREASURY_WALLET);
+    ixs.push(
+      createTransferInstruction(
+        treasuryAta,
+        recipientAta,
+        TREASURY_WALLET, // authority (we will partially sign with treasury)
+        tixAmount * 10 ** TIX_DECIMALS,
+        [],
+        TOKEN_PROGRAM_ID
+      )
+    );
+
+    const tx = new Transaction().add(...ixs);
+    tx.feePayer = buyer; // BUYER pays the fee
+    const { blockhash } = await connection.getLatestBlockhash();
+    tx.recentBlockhash = blockhash;
+
+    // Partial sign with treasury so the transfer authority is satisfied
+    tx.sign(TREASURY_KEYPAIR);
+
+    // Serialize without requiring all signatures (buyer will add theirs)
+    const serialized = tx.serialize({ requireAllSignatures: false });
+    const txBase64 = Buffer.from(serialized).toString("base64");
 
     return res.status(200).json({
       success: true,
-      txid,
+      phase: "prepare",
+      txBase64,
       tixAmount,
-      solAmount,
+      solAmount: Number(solAmount || 0),
       usdSpent,
       tixPriceUsd: TIX_PRICE_USD,
       solPriceUsd,

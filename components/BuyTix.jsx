@@ -65,11 +65,13 @@ export default function BuyTix() {
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
 
-      const txid = await window.solana.signAndSendTransaction(tx);
-      await connection.confirmTransaction(txid, "confirmed");
+      // Ensure we confirm with the actual signature string
+      const sigRes = await window.solana.signAndSendTransaction(tx);
+      const sig1 = typeof sigRes === "string" ? sigRes : sigRes.signature;
+      await connection.confirmTransaction({ signature: sig1 }, "confirmed");
 
-      // Step 2: Trigger TIX transfer from backend
-      const res = await fetch("/api/buyTix", {
+      // Step 2a: Prepare SPL-token transfer where BUYER pays fee (server partially signs)
+      const prepRes = await fetch("/api/buyTix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -77,9 +79,27 @@ export default function BuyTix() {
           solAmount: parseFloat(solInput),
         }),
       });
+      const prep = await prepRes.json();
+      if (!prep.success || !prep.txBase64) throw new Error(prep.error || "Prepare failed");
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "TIX transfer failed");
+      // Buyer signs & sends the partially-signed tx
+      const bytes = Uint8Array.from(atob(prep.txBase64), (c) => c.charCodeAt(0));
+      const sigRes2 = await window.solana.signAndSendTransaction({ serializedTransaction: bytes });
+      const sig2 = typeof sigRes2 === "string" ? sigRes2 : sigRes2.signature;
+      await connection.confirmTransaction({ signature: sig2 }, "confirmed");
+
+      // Step 2b: Finalize (record purchase + credits)
+      const finRes = await fetch("/api/buyTix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          walletAddress: publicKey.toBase58(),
+          solAmount: parseFloat(solInput),
+          txSig: sig2,
+        }),
+      });
+      const data = await finRes.json();
+      if (!data.success) throw new Error(data.error || "Finalize failed");
 
       setResult(data);
       fetchSolBalance();
