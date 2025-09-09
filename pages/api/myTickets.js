@@ -1,43 +1,45 @@
 import { createClient } from "@supabase/supabase-js";
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // server-side key to bypass RLS for this read
+);
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok:false, error: "Method not allowed" });
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
   try {
-    const wallet = req.query.wallet;
-    if (!wallet) return res.status(400).json({ ok:false, error: "Missing wallet" });
+    const wallet = (req.query.wallet || "").trim();
+    if (!wallet) return res.status(400).json({ ok: false, error: "Missing wallet" });
 
-    // latest/active draw
+    // Get most recent draw start (your schema uses draw_date)
     const { data: lastDraw, error: drawErr } = await supabase
       .from("draws")
-      .select("id, draw_date")
+      .select("draw_date")
       .order("draw_date", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (drawErr) return res.status(500).json({ ok:false, error: drawErr.message });
-    if (!lastDraw?.id) return res.status(200).json({ ok:true, drawId: null, drawDate: null, tickets: [] });
+    if (drawErr) return res.status(500).json({ ok: false, error: drawErr.message });
 
-    // entries for this wallet & draw
+    const sinceIso = lastDraw?.draw_date || "1970-01-01T00:00:00Z";
+
+    // Fetch this wallet's entries since the last draw
     const { data: entries, error: entErr } = await supabase
       .from("entries")
-      .select("id, num1, num2, num3, num4, moonball, entry_type, created_at")
+      .select("id, created_at, num1, num2, num3, num4, moonball, entry_type")
       .eq("wallet", wallet)
-      .eq("draw_id", lastDraw.id)
-      .order("created_at", { ascending: false });
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(200);
 
-    if (entErr) return res.status(500).json({ ok:false, error: entErr.message });
+    if (entErr) return res.status(500).json({ ok: false, error: entErr.message });
 
-    return res.status(200).json({
-      ok: true,
-      drawId: lastDraw.id,
-      drawDate: lastDraw.draw_date,
-      tickets: entries || []
-    });
+    return res.status(200).json({ ok: true, items: entries || [] });
   } catch (e) {
-    return res.status(500).json({ ok:false, error: e.message || "Server error" });
+    console.error("myTickets error:", e);
+    return res.status(500).json({ ok: false, error: e.message || "Server error" });
   }
 }
