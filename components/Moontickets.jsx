@@ -154,7 +154,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
     setLoading(true);
     try {
-      // Prepare (credits-only flow returns ok + lockedCredits)
       const prep = await fetchJSON("/api/powerballEntryTx", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -167,7 +166,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       });
       if (!prep?.ok) throw new Error(prep?.error || "Failed to prepare");
 
-      // Finalize
       const fin = await fetchJSON("/api/powerballEntryFinalize", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -223,11 +221,16 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   };
 
   return (
-    <div style={{maxWidth:900, margin:"0 auto", padding:"24px", paddingTop: "96px"}}>
+    <div
+      style={{
+        maxWidth: 900,
+        margin: "0 auto",
+        padding: "24px",
+        // increased to clear the nav thoroughly
+        paddingTop: "132px",
+      }}
+    >
       <h1 style={{marginBottom:8}}>Moontickets</h1>
-      <div style={{opacity:0.8, marginBottom:16}}>
-        Wallet: {wallet ? wallet.slice(0,4)+"…"+wallet.slice(-4) : "Not connected"}
-      </div>
 
       {/* Weekly free credit */}
       <div style={{border:"1px solid #333", borderRadius:8, padding:12, marginBottom:16}}>
@@ -306,7 +309,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         </div>
       ))}
 
-      {/* Totals (trimmed to only what matters now) */}
+      {/* Totals (trimmed) */}
       <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:12}}>
         <div><b>Total tickets:</b> {cart.length}</div>
         <div><b>Credits available:</b> {credits}</div>
