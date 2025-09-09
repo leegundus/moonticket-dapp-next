@@ -59,9 +59,8 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     return () => { s?.off?.("connect", onConnect); s?.off?.("accountChanged", onAcct); };
   }, [wallet]);
 
-  // --- NEW: SOL balance ---
+  // --- SOL balance ---
   const [solBalance, setSolBalance] = useState(0);
-  const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || (typeof window !== "undefined" ? process.env.NEXT_PUBLIC_RPC_URL : "");
   useEffect(() => {
     let cancelled = false;
     async function loadSol() {
@@ -83,10 +82,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const [tweetUrl, setTweetUrl] = useState("");
   const tweetOk = isValidTweetUrl(tweetUrl);
 
-  // --- NEW: My tickets (current draw) ---
-  const [myTickets, setMyTickets] = useState([]);
-  const [myTixLoading, setMyTixLoading] = useState(false);
-
   async function fetchCredits() {
     if (!wallet) return;
     try {
@@ -96,21 +91,23 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   }
   useEffect(() => { fetchCredits(); }, [wallet]);
 
-  // --- NEW: Load user's tickets for the current draw ---
+  // --- NEW: load my tickets for the “current drawing” ---
+  const [myTickets, setMyTickets] = useState([]);
+  const [ticketsMeta, setTicketsMeta] = useState(null);
+
   async function loadMyTickets() {
-    if (!wallet) { setMyTickets([]); return; }
-    setMyTixLoading(true);
+    if (!wallet) { setMyTickets([]); setTicketsMeta(null); return; }
     try {
       const j = await fetchJSON(`/api/myTickets?wallet=${wallet}`);
-      setMyTickets(Array.isArray(j?.tickets) ? j.tickets : []);
+      setMyTickets(Array.isArray(j?.items) ? j.items : []);
+      setTicketsMeta(j?.meta || null);
     } catch (e) {
-      console.error("loadMyTickets", e);
+      console.error("loadMyTickets:", e);
       setMyTickets([]);
-    } finally {
-      setMyTixLoading(false);
+      setTicketsMeta(null);
     }
   }
-  useEffect(() => { if (wallet) loadMyTickets(); }, [wallet]);
+  useEffect(() => { loadMyTickets(); }, [wallet]);
 
   function addQuickPick() { setCart(prev => [...prev, quickPickOne()]); }
   function addBlankTicket() { setCart(prev => [...prev, { num1:1,num2:2,num3:3,num4:4,moonball:1 }]); }
@@ -144,7 +141,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       });
       if (!json?.ok) throw new Error(json?.error || "Claim failed");
       await fetchCredits();
-      await loadMyTickets(); // NEW: refresh list in case claim auto-redeems later
       setTweetUrl("");
       alert("Free ticket credited! It will be applied at checkout.");
     } catch (e) {
@@ -165,7 +161,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
     setLoading(true);
     try {
-      // 1) Prepare: get tx & fee estimate
       const prep = await fetchJSON("/api/powerballEntryTx", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -178,33 +173,24 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       });
       if (!prep?.ok) throw new Error(prep?.error || "Failed to prepare");
 
-      // SOL pre-check (estimate may be 0 if credits cover all)
       const needLamports = Number(prep.estTotalLamports || 0);
       if (needLamports > 0) {
-        // Refresh local balance once before prompt
-        try {
-          const conn = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
-          const lamports = await conn.getBalance(new PublicKey(addr));
-          const have = lamports;
-          if (have < needLamports) {
-            const needSOL = (needLamports / 1e9).toFixed(6);
-            const haveSOL = (have / 1e9).toFixed(6);
-            throw new Error(`Not enough SOL for fees. Need ~${needSOL} SOL; you have ${haveSOL} SOL.`);
-          }
-        } catch (e) {
-          throw e;
+        const conn = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
+        const have = await conn.getBalance(new PublicKey(addr));
+        if (have < needLamports) {
+          const needSOL = (needLamports / 1e9).toFixed(6);
+          const haveSOL = (have / 1e9).toFixed(6);
+          throw new Error(`Not enough SOL for fees. Need ~${needSOL} SOL; you have ${haveSOL} SOL.`);
         }
       }
 
       let signature = null;
       if (prep.txBase64) {
-        // sign and send (Phantom)
         const tx = Transaction.from(Buffer.from(prep.txBase64, "base64"));
         const { signature: sig } = await window.solana.signAndSendTransaction(tx);
         signature = sig;
       }
 
-      // 2) Finalize
       const fin = await fetchJSON("/api/powerballEntryFinalize", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
@@ -221,7 +207,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       setCart([]);
       await onRefresh?.();
       await fetchCredits();
-      await loadMyTickets(); // NEW: refresh tickets after successful purchase
+      await loadMyTickets(); // <--- refresh the visible list
       alert(`Tickets submitted: ${fin.inserted} (credits: ${prep.lockedCredits || 0}, paid: ${ticketsToPay})`);
     } catch (e) {
       console.error(e);
@@ -330,12 +316,12 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         <div><b>Total cost (TIX):</b> {new Intl.NumberFormat().format(totalTixCost)}</div>
       </div>
 
-      {/* NEW: Wallet / fees summary */}
+      {/* Wallet / fees summary */}
       <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:6, opacity:0.9}}>
         <div><b>TIX balance:</b> {new Intl.NumberFormat().format(tixBalance ?? 0)}</div>
         <div><b>SOL balance:</b> {solBalance.toFixed(6)}</div>
         <div><b>TIX per ticket:</b> {new Intl.NumberFormat().format(TIX_PER_TICKET)}</div>
-        <button onClick={() => { /* manual refresh */ }}>
+        <button onClick={() => { fetchCredits(); loadMyTickets(); }}>
           Refresh
         </button>
       </div>
@@ -346,28 +332,30 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         </button>
       </div>
 
-      {/* NEW: My tickets for current drawing */}
-      <div style={{marginTop:20}}>
-        <h3 style={{marginBottom:8}}>My Tickets (current drawing)</h3>
-        {myTixLoading ? (
-          <div style={{opacity:0.8}}>Loading…</div>
-        ) : myTickets.length === 0 ? (
-          <div style={{opacity:0.8}}>No tickets yet for the current drawing.</div>
+      {/* --- NEW: My Tickets (current drawing) --- */}
+      <div style={{marginTop:24}}>
+        <div style={{fontWeight:700, marginBottom:8}}>My Tickets (current drawing)</div>
+        {myTickets.length === 0 ? (
+          <div style={{opacity:0.8}}>
+            No tickets yet for the current drawing.
+          </div>
         ) : (
-          <div style={{display:"grid", gap:8}}>
-            {myTickets.map(t => (
-              <div key={t.id} style={{border:"1px solid #333", borderRadius:8, padding:8, display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-                <div>
-                  <div style={{fontWeight:600}}>
-                    {t.num1}-{t.num2}-{t.num3}-{t.num4} &nbsp; | &nbsp; Moonball {t.moonball}
-                  </div>
-                  <div style={{fontSize:12, opacity:0.7}}>
-                    {new Date(t.created_at).toLocaleString()} · {t.entry_type || "credit"}
-                  </div>
-                </div>
-                <div style={{fontSize:12, opacity:0.7}}>#{t.id}</div>
-              </div>
+          <ul style={{listStyle:"none", padding:0, margin:0}}>
+            {myTickets.map((e) => (
+              <li key={e.id} style={{marginBottom:6}}>
+                <span>
+                  {e.num1}-{e.num2}-{e.num3}-{e.num4} • MB {e.moonball}
+                </span>
+                <span style={{opacity:0.7, marginLeft:8, fontSize:12}}>
+                  {new Date(e.created_at).toLocaleString()}
+                </span>
+              </li>
             ))}
+          </ul>
+        )}
+        {ticketsMeta?.fallbackUsed && (
+          <div style={{marginTop:6, fontSize:12, opacity:0.7}}>
+            Showing recent tickets (no draw window found).
           </div>
         )}
       </div>
