@@ -5,13 +5,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// basic X/Twitter status URL check (we still require a URL, we do not store it)
 function isValidTweetUrl(u) {
   try {
     const url = new URL(u);
     const host = url.hostname.toLowerCase();
     const ok = ["x.com","www.x.com","twitter.com","www.twitter.com","mobile.twitter.com"];
     if (!ok.includes(host)) return false;
-    // /<handle>/status/<id>
     return /^\/[A-Za-z0-9_]{1,15}\/status\/\d+/.test(url.pathname);
   } catch { return false; }
 }
@@ -24,63 +24,53 @@ export default async function handler(req, res) {
   try {
     const { wallet, tweetUrl } = req.body || {};
     if (!wallet)   return res.status(400).json({ ok:false, error:"Missing wallet" });
-    if (!tweetUrl || !isValidTweetUrl(tweetUrl)) {
+    if (!tweetUrl) return res.status(400).json({ ok:false, error:"Missing tweet URL" });
+    if (!isValidTweetUrl(tweetUrl)) {
       return res.status(400).json({ ok:false, error:"Valid X/Twitter status URL required" });
     }
 
-    // Get the start of the current draw window
+    // latest draw (your schema uses draw_date)
     const { data: lastDraw, error: de } = await supabase
       .from("draws")
-      .select("draw_date")
-      .order("draw_date", { ascending: false })
+      .select("id, draw_date")
+      .order("draw_date", { ascending:false })
       .limit(1)
       .maybeSingle();
     if (de) return res.status(500).json({ ok:false, error: de.message });
-    const drawStart = lastDraw?.draw_date || null;
 
-    // Ensure a balance row exists
-    const { error: upsertErr } = await supabase
-      .from("pending_tickets")
-      .upsert({ wallet, balance: 0 }, { onConflict: "wallet" });
-    if (upsertErr) return res.status(500).json({ ok:false, error: upsertErr.message });
+    const drawId = lastDraw?.id ?? null;
 
-    // Read current balance + last_free_draw
-    const { data: row, error: readErr } = await supabase
-      .from("pending_tickets")
-      .select("balance,last_free_draw")
-      .eq("wallet", wallet)
-      .maybeSingle();
-    if (readErr) return res.status(500).json({ ok:false, error: readErr.message });
-
-    // If already claimed for this draw, block further claims
-    if (drawStart && row?.last_free_draw && new Date(row.last_free_draw) >= new Date(drawStart)) {
-      return res.status(409).json({
-        ok: false,
-        error: "Already claimed free ticket for this drawing"
-      });
+    // one free credit per wallet per draw
+    if (drawId) {
+      const { data: already } = await supabase
+        .from("pending_tickets")
+        .select("id")
+        .eq("wallet", wallet)
+        .eq("draw_id", drawId)
+        .eq("source", "tweet")
+        .limit(1);
+      if (already && already.length) {
+        return res.status(200).json({ ok:false, error:"Already claimed free ticket for this draw" });
+      }
     }
 
-    // Add +1 credit and stamp this draw as the last free claim
-    const newBalance = Number(row?.balance || 0) + 1;
-    const { data: upd, error: updErr } = await supabase
-      .from("pending_tickets")
-      .update({
-        balance: newBalance,
-        last_free_draw: drawStart || row?.last_free_draw || null,
-        updated_at: new Date().toISOString()
-      })
-      .eq("wallet", wallet)
-      .select("balance")
-      .maybeSingle();
-    if (updErr) return res.status(500).json({ ok:false, error: updErr.message });
+    // Insert a row into pending_tickets (row-per-credit model)
+    // NOTE: your table requires `source` NOT NULL → set 'tweet'.
+    const insertRow = {
+      wallet,
+      draw_id: drawId,                 // nullable is fine if no draw
+      source: "tweet",                 // <— important (fixes your NULL error)
+      is_redeemed: false,
+      is_consumed: false,
+      created_at: new Date().toISOString(),
+    };
 
-    return res.status(200).json({
-      ok: true,
-      newBalance: Number(upd?.balance ?? newBalance),
-      message: "Free ticket credited"
-    });
+    const { error: ie } = await supabase.from("pending_tickets").insert(insertRow);
+    if (ie) return res.status(500).json({ ok:false, error: ie.message });
+
+    return res.status(200).json({ ok:true, credited: 1 });
   } catch (e) {
-    console.error("claimFreeTicket error:", e);
-    return res.status(500).json({ ok:false, error: e.message || "Server error" });
+    return res.status(500).json({ ok:false, error: e.message });
   }
 }
+

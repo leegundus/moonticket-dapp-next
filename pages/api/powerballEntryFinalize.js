@@ -14,39 +14,68 @@ function validateTickets(tickets){
 
 export default async function handler(req,res){
   if (req.method !== "POST") return res.status(405).json({ ok:false, error:"Method not allowed" });
+
   try{
     const { wallet, tickets, lockedCredits = 0 } = req.body || {};
     if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
+
     const v = validateTickets(tickets);
     if (v) return res.status(400).json({ ok:false, error: v });
 
+    // How many credits to consume
     const N = Number(lockedCredits || tickets.length);
+    if (!Number.isFinite(N) || N <= 0) {
+      return res.status(400).json({ ok:false, error:"Invalid credit count" });
+    }
 
-    // Atomic: decrement if enough balance
-    const { data: dec, error: decErr } = await supabase.rpc("exec_sql", {
-      q: `
-        UPDATE public.pending_tickets
-        SET balance = balance - $2, updated_at = now()
-        WHERE wallet = $1 AND balance >= $2
-        RETURNING balance;
-      `,
-      params: [wallet, N]
-    });
-    if (decErr) return res.status(500).json({ ok:false, error: decErr.message });
-    if (!dec || dec.length === 0) {
+    // --- Load current balance
+    const { data: balRow, error: balErr } = await supabase
+      .from("pending_tickets")
+      .select("balance")
+      .eq("wallet", wallet)
+      .maybeSingle();
+
+    if (balErr) return res.status(500).json({ ok:false, error: balErr.message });
+
+    const current = Number(balRow?.balance || 0);
+    if (current < N) {
       return res.status(400).json({ ok:false, error:"Insufficient credits (race or mismatch). Please refresh." });
     }
 
-    // Insert entries
+    // --- Optimistic concurrency: set balance to (current - N) iff it is still `current`
+    const newBalance = current - N;
+    const { data: updRows, error: updErr } = await supabase
+      .from("pending_tickets")
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+      .eq("wallet", wallet)
+      .eq("balance", current)               // compare-and-swap guard
+      .select("balance");
+
+    if (updErr) return res.status(500).json({ ok:false, error: updErr.message });
+    if (!updRows || updRows.length === 0) {
+      // Another request changed the balance between read and write
+      return res.status(409).json({ ok:false, error:"Balance changed. Please refresh and try again." });
+    }
+
+    // --- Insert entries
     const rows = tickets.map(t => ({
       wallet,
       entry_type: "credit",
       num1: t.num1, num2: t.num2, num3: t.num3, num4: t.num4, moonball: t.moonball,
     }));
-    const { error: insErr } = await supabase.from("entries").insert(rows);
-    if (insErr) return res.status(500).json({ ok:false, error: insErr.message });
 
-    return res.status(200).json({ ok:true, inserted: rows.length, newBalance: dec[0].balance });
+    const { error: insErr } = await supabase.from("entries").insert(rows);
+    if (insErr) {
+      // Best-effort rollback of balance if inserts fail
+      await supabase
+        .from("pending_tickets")
+        .update({ balance: current, updated_at: new Date().toISOString() })
+        .eq("wallet", wallet)
+        .eq("balance", newBalance);
+      return res.status(500).json({ ok:false, error: insErr.message });
+    }
+
+    return res.status(200).json({ ok:true, inserted: rows.length, newBalance });
   }catch(e){
     console.error("powerballEntryFinalize error:", e);
     return res.status(500).json({ ok:false, error: e.message || "Server error" });
