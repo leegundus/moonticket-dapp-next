@@ -11,7 +11,7 @@ export default function Page() {
       <img
         src="/Moontickets-banner.png"
         alt="Moonticket Banner"
-        className="w-72 md:w-[28rem] lg:w-[36rem] mx-auto mb-8"
+        className="w-72 md:w-[28rem] lg:w-[36rem] mx-auto mb-4"
       />
 
       {/* Render the Moontickets component */}

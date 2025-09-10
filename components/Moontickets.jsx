@@ -118,7 +118,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const ticketsToCredit = useMemo(() => Math.min(credits, cart.length), [credits, cart.length]);
 
   function openXComposer() {
-    const defaultText = encodeURIComponent("Grabbing my free #Moonticket 🎟️ Come play: https://moonticket.io");
+    const defaultText = encodeURIComponent("I got my free weekly Moonticket for the jackpot drawing, get yours at: https://moonticket.io @moonticket__io");
     window.open(`https://x.com/intent/post?text=${defaultText}`, "_blank", "noopener,noreferrer");
   }
 
@@ -230,7 +230,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         paddingTop: "132px",
       }}
     >
-      <h1 style={{marginBottom:8}}>Moontickets</h1>
 
       {/* Weekly free credit */}
       <div style={{border:"1px solid #333", borderRadius:8, padding:12, marginBottom:16}}>
