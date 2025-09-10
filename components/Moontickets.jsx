@@ -118,7 +118,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const ticketsToCredit = useMemo(() => Math.min(credits, cart.length), [credits, cart.length]);
 
   function openXComposer() {
-    const defaultText = encodeURIComponent("I got my free weekly Moonticket for the jackpot drawing, get yours at: https://moonticket.io @moonticket__io");
+    const defaultText = encodeURIComponent("I got my free weekly Moonticket for the jackpot drawing, get yours at: https://moonticket.io@moonticket__io");
     window.open(`https://x.com/intent/post?text=${defaultText}`, "_blank", "noopener,noreferrer");
   }
 
@@ -286,19 +286,23 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
               >
                 {MAIN_POOL.map(n => (
                   <option key={n} value={n} disabled={isDisabledOption(idx, fieldKey, n)}>
-                    {n}
+                      {n}
                   </option>
                 ))}
               </select>
             ))}
-            <span>Moonball</span>
-            <select
-              style={selectStyle}
-              value={t.moonball}
-              onChange={e=>updateTicket(idx, {moonball: Number(e.target.value)})}
-            >
-              {MOON_POOL.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+
+            {/* Moonball label + select kept together on one line (mobile too) */}
+            <span style={{display:"inline-flex", alignItems:"center", gap:6, whiteSpace:"nowrap"}}>
+              <span>Moonball</span>
+              <select
+                style={selectStyle}
+                value={t.moonball}
+                onChange={e=>updateTicket(idx, {moonball: Number(e.target.value)})}
+              >
+                {MOON_POOL.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </span>
 
             <button style={btnOutline} onClick={()=>updateTicket(idx, quickPickOne())}>Quick Pick</button>
           </div>
@@ -308,18 +312,15 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         </div>
       ))}
 
-      {/* Totals (trimmed) */}
-      <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:12}}>
+      {/* Totals (trimmed & compact) */}
+      <div style={{display:"flex", flexWrap:"wrap", gap:16, alignItems:"center", marginTop:12}}>
         <div><b>Total tickets:</b> {cart.length}</div>
         <div><b>Credits available:</b> {credits}</div>
         <div><b>Applying credits:</b> {ticketsToCredit}</div>
       </div>
 
-      {/* Wallet / misc */}
+      {/* Wallet / misc (trimmed to only refresh) */}
       <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:6, opacity:0.9}}>
-        <div><b>TIX balance:</b> {new Intl.NumberFormat().format(tixBalance ?? 0)}</div>
-        <div><b>SOL balance:</b> {solBalance.toFixed(6)}</div>
-        <div><b>TIX per ticket:</b> {new Intl.NumberFormat().format(TIX_PER_TICKET)}</div>
         <button
           style={btnOutline}
           onClick={async () => { await fetchCredits(); await loadMyTickets(); }}
