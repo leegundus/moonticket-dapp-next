@@ -33,8 +33,8 @@ export default function Home() {
           <Link href="/past">
             <img src="/past-button.png" alt="Winners" className="w-40 md:w-48 mx-auto block cursor-pointer" />
           </Link>
-          <Link href="/nfts">
-            <img src="/nfts-button.png" alt="NFTs" className="w-40 md:w-48 mx-auto block cursor-pointer" />
+          <Link href="/Moontickets">
+            <img src="/moontickets-button.png" alt="NFTs" className="w-40 md:w-48 mx-auto block cursor-pointer" />
           </Link>
           <Link href="/burn">
             <img src="/burn-button.png" alt="Burn to Earn" className="w-40 md:w-48 mx-auto block cursor-pointer" />
