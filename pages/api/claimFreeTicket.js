@@ -1,16 +1,19 @@
 import { createClient } from "@supabase/supabase-js";
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-// Keep the URL check so users paste a real X/Twitter post
 function isValidTweetUrl(u) {
   try {
     const url = new URL(u);
     const host = url.hostname.toLowerCase();
-    const ok = ["x.com","www.x.com","twitter.com","www.twitter.com","mobile.twitter.com"];
-    if (!ok.includes(host)) return false;
+    const allowed = ["x.com","www.x.com","twitter.com","www.twitter.com","mobile.twitter.com"];
+    if (!allowed.includes(host)) return false;
     return /^\/[A-Za-z0-9_]{1,15}\/status\/\d+/.test(url.pathname);
   } catch { return false; }
 }
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,64 +22,72 @@ export default async function handler(req, res) {
 
   try {
     const { wallet, tweetUrl } = req.body || {};
-    if (!wallet)   return res.status(400).json({ ok:false, error:"Missing wallet" });
-    if (!tweetUrl) return res.status(400).json({ ok:false, error:"Missing tweet URL" });
-    if (!isValidTweetUrl(tweetUrl)) {
+    if (!wallet) return res.status(400).json({ ok:false, error:"Missing wallet" });
+    if (!tweetUrl || !isValidTweetUrl(tweetUrl)) {
       return res.status(400).json({ ok:false, error:"Valid X/Twitter status URL required" });
     }
 
-    // Latest draw (your schema uses draw_date)
-    const { data: lastDraw, error: de } = await supabase
+    // Get the most recent draw_date to form the current "window".
+    const { data: lastDraw, error: drawErr } = await supabase
       .from("draws")
-      .select("id, draw_date")
-      .order("draw_date", { ascending:false })
+      .select("draw_date")
+      .order("draw_date", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (de) return res.status(500).json({ ok:false, error: de.message });
 
-    const drawId = lastDraw?.id ?? null;
-    if (!drawId) {
-      return res.status(400).json({ ok:false, error:"No active draw found" });
+    if (drawErr) return res.status(500).json({ ok:false, error: drawErr.message });
+
+    // If no past draws, treat windowStart very old so a claim is allowed.
+    const windowStart = lastDraw?.draw_date || "1970-01-01T00:00:00Z";
+
+    // Enforce one claim per wallet per draw window by logging a row in `entries`.
+    // We DO NOT create a ticket; we just record the claim event.
+    const { data: prior, error: priorErr } = await supabase
+      .from("entries")
+      .select("id")
+      .eq("wallet", wallet)
+      .eq("entry_type", "free_claim")
+      .gte("created_at", windowStart)
+      .limit(1);
+
+    if (priorErr) return res.status(500).json({ ok:false, error: priorErr.message });
+    if (prior && prior.length > 0) {
+      return res.status(200).json({ ok:false, error: "Already claimed free ticket for this drawing" });
     }
 
-    // Prevent double-claim per draw using a unique log
-    const { error: insLogErr } = await supabase
-      .from("free_claims")
-      .insert({ wallet, draw_id: drawId, created_at: new Date().toISOString() });
-
-    if (insLogErr) {
-      // unique violation means they already claimed
-      if (insLogErr.code === "23505") {
-        return res.status(200).json({ ok:false, error:"Already claimed free ticket for this draw" });
-      }
-      return res.status(500).json({ ok:false, error: insLogErr.message });
-    }
-
-    // Upsert balance row then increment by 1
-    await supabase
-      .from("pending_tickets")
-      .upsert({ wallet, balance: 0 }, { onConflict: "wallet" });
-
-    const { data: balRow, error: balErr } = await supabase
+    // Upsert/increment the aggregate pending credits for this wallet.
+    const { data: row, error: getErr } = await supabase
       .from("pending_tickets")
       .select("balance")
       .eq("wallet", wallet)
       .maybeSingle();
 
-    if (balErr) return res.status(500).json({ ok:false, error: balErr.message });
+    if (getErr) return res.status(500).json({ ok:false, error: getErr.message });
 
-    const current = Number(balRow?.balance || 0);
-    const newBalance = current + 1;
+    if (row) {
+      const { error: upErr } = await supabase
+        .from("pending_tickets")
+        .update({ balance: (row.balance || 0) + 1, updated_at: new Date().toISOString() })
+        .eq("wallet", wallet);
+      if (upErr) return res.status(500).json({ ok:false, error: upErr.message });
+    } else {
+      const { error: insErr } = await supabase
+        .from("pending_tickets")
+        .insert({ wallet, balance: 1, updated_at: new Date().toISOString() });
+      if (insErr) return res.status(500).json({ ok:false, error: insErr.message });
+    }
 
-    const { error: updErr } = await supabase
-      .from("pending_tickets")
-      .update({ balance: newBalance, updated_at: new Date().toISOString() })
-      .eq("wallet", wallet);
+    // Log the claim (for anti-abuse + window check). Numbers are NULL; entry_type distinguishes it.
+    const { error: logErr } = await supabase.from("entries").insert({
+      wallet,
+      entry_type: "free_claim",
+      // no numbers; just auditing the claim time
+    });
+    if (logErr) return res.status(500).json({ ok:false, error: logErr.message });
 
-    if (updErr) return res.status(500).json({ ok:false, error: updErr.message });
-
-    return res.status(200).json({ ok:true, credited: 1, balance: newBalance });
+    return res.status(200).json({ ok:true });
   } catch (e) {
-    return res.status(500).json({ ok:false, error: e.message });
+    console.error("claimFreeTicket error:", e);
+    return res.status(500).json({ ok:false, error: e.message || "Server error" });
   }
 }
