@@ -9,7 +9,7 @@ export default function Page() {
     <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center pt-44 px-4">
       {/* Banner */}
       <img
-        src="/moontickets-banner.png"
+        src="/Moontickets-banner.png"
         alt="Moonticket Banner"
         className="w-72 md:w-[28rem] lg:w-[36rem] mx-auto mb-8"
       />
