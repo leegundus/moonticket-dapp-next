@@ -93,26 +93,43 @@ export default async function handler(req, res) {
       created_at: new Date().toISOString(),
     });
 
-    // Grant credits: 1 per whole $1 spent
+    // Grant credits: 1 per whole $1 spent  (NOW tagged as source: 'purchase')
     const creditsToGrant = Math.floor(usdSpent + 1e-6);
     if (creditsToGrant > 0) {
-      await supabase
+      // Look for existing 'purchase' bucket for this wallet
+      const { data: existing, error: selErr } = await supabase
         .from("pending_tickets")
-        .upsert({ wallet: walletAddress, balance: 0 }, { onConflict: "wallet" });
-
-      const { data: balRow } = await supabase
-        .from("pending_tickets")
-        .select("balance")
+        .select("id,balance")
         .eq("wallet", walletAddress)
+        .eq("source", "purchase")
         .maybeSingle();
 
-      const current = Number(balRow?.balance || 0);
-      const newBalance = current + creditsToGrant;
+      if (selErr) throw selErr;
 
-      await supabase
-        .from("pending_tickets")
-        .update({ balance: newBalance, updated_at: new Date().toISOString() })
-        .eq("wallet", walletAddress);
+      const nowIso = new Date().toISOString();
+
+      if (existing?.id) {
+        const { error: updErr } = await supabase
+          .from("pending_tickets")
+          .update({
+            balance: Number(existing.balance || 0) + creditsToGrant,
+            updated_at: nowIso,
+          })
+          .eq("id", existing.id);
+        if (updErr) throw updErr;
+      } else {
+        const { error: insErr } = await supabase
+          .from("pending_tickets")
+          .insert({
+            wallet: walletAddress,
+            balance: creditsToGrant,
+            source: "purchase",          // <-- important: satisfies NOT NULL
+            // draw_id: null,             // purchases are generic credits
+            created_at: nowIso,
+            updated_at: nowIso,
+          });
+        if (insErr) throw insErr;
+      }
     }
 
     return res.status(200).json({
@@ -130,4 +147,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message });
   }
 }
-
