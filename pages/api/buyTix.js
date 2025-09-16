@@ -93,38 +93,37 @@ export default async function handler(req, res) {
       created_at: new Date().toISOString(),
     });
 
-    // Grant credits: 1 per whole $1 spent  (NOW tagged as source: 'purchase')
+    // Grant credits: 1 per whole $1 spent  (single-row per wallet)
     const creditsToGrant = Math.floor(usdSpent + 1e-6);
     if (creditsToGrant > 0) {
-      // Look for existing 'purchase' bucket for this wallet
-      const { data: existing, error: selErr } = await supabase
+      // Read current row (unique on wallet)
+      const { data: row, error: selErr } = await supabase
         .from("pending_tickets")
         .select("id,balance")
         .eq("wallet", walletAddress)
-        .eq("source", "purchase")
         .maybeSingle();
-
       if (selErr) throw selErr;
 
       const nowIso = new Date().toISOString();
 
-      if (existing?.id) {
+      if (row?.id) {
+        // bump existing balance
         const { error: updErr } = await supabase
           .from("pending_tickets")
           .update({
-            balance: Number(existing.balance || 0) + creditsToGrant,
+            balance: Number(row.balance || 0) + creditsToGrant,
             updated_at: nowIso,
           })
-          .eq("id", existing.id);
+          .eq("id", row.id);
         if (updErr) throw updErr;
       } else {
+        // create the single wallet row
         const { error: insErr } = await supabase
           .from("pending_tickets")
           .insert({
             wallet: walletAddress,
             balance: creditsToGrant,
-            source: "purchase",          // <-- important: satisfies NOT NULL
-            // draw_id: null,             // purchases are generic credits
+            source: "purchase",           // satisfies NOT NULL, informational
             created_at: nowIso,
             updated_at: nowIso,
           });
