@@ -220,6 +220,38 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     cursor: "pointer",
   };
 
+  // ---------------------------
+  // Past tickets (NEW)
+  // ---------------------------
+  const PAGE_SIZE = 10;
+  const [pastOpen, setPastOpen]     = useState(false);
+  const [pastPage, setPastPage]     = useState(1);
+  const [pastTotal, setPastTotal]   = useState(0);
+  const [pastItems, setPastItems]   = useState([]);
+  const [loadingPast, setLoadingPast] = useState(false);
+
+  async function loadPastTickets(page = pastPage) {
+    if (!wallet) { setPastItems([]); setPastTotal(0); return; }
+    setLoadingPast(true);
+    try {
+      // expects API to support pagination; adjust if your route differs
+      const j = await fetchJSON(`/api/myTickets?wallet=${wallet}&past=1&page=${page}&limit=${PAGE_SIZE}`);
+      setPastItems(Array.isArray(j?.items) ? j.items : []);
+      setPastTotal(Number(j?.total || 0));
+    } catch (e) {
+      console.error("pastTickets error:", e);
+      setPastItems([]);
+      setPastTotal(0);
+    } finally {
+      setLoadingPast(false);
+    }
+  }
+
+  useEffect(() => { if (pastOpen) loadPastTickets(1); }, [wallet, pastOpen]);
+  useEffect(() => { if (pastOpen) loadPastTickets(pastPage); }, [pastPage]); // page change
+
+  const totalPages = Math.max(1, Math.ceil(pastTotal / PAGE_SIZE));
+
   return (
     <div
       style={{
@@ -227,7 +259,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         margin: "0 auto",
         padding: "24px",
         // increased to clear the nav thoroughly
-        paddingTop: "132px",
+        paddingTop: "40px",
       }}
     >
 
@@ -360,6 +392,75 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      {/* Past tickets (collapsible) */}
+      <div style={{marginTop:24, borderTop:"1px solid #333", paddingTop:16}}>
+        <button
+          onClick={() => setPastOpen(o => !o)}
+          style={{
+            ...btnOutline,
+            padding:"8px 12px",
+            display:"inline-flex",
+            alignItems:"center",
+            gap:8
+          }}
+        >
+          {pastOpen ? "▼" : "►"} Past Tickets
+        </button>
+
+        {pastOpen && (
+          <div style={{marginTop:12}}>
+            {loadingPast ? (
+              <div style={{opacity:0.8}}>Loading…</div>
+            ) : !pastItems.length ? (
+              <div style={{opacity:0.8}}>No past tickets found.</div>
+            ) : (
+              <>
+                <ul style={{listStyle:"none", padding:0, margin:0}}>
+                  {pastItems.map((t) => (
+                    <li key={t.id} style={{marginBottom:6}}>
+                      {t.num1}-{t.num2}-{t.num3}-{t.num4} · MB {t.moonball}
+                      {t.draw_date && (
+                        <span style={{opacity:0.6}}>
+                           {" "}· Draw: {new Date(t.draw_date).toLocaleString()}
+                        </span>
+                      )}
+                      {typeof t.prize_tix === "number" || typeof t.prize_sol === "number" ? (
+                        <span style={{marginLeft:6, color:"#9FE870"}}>
+                          {t.prize_sol > 0
+                            ? ` • WIN: ${(t.prize_sol).toFixed(6)} SOL`
+                            : t.prize_tix > 0
+                              ? ` • WIN: ${Number(t.prize_tix).toLocaleString()} TIX`
+                              : ` • No prize`}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Pagination */}
+                <div style={{display:"flex", gap:8, alignItems:"center", marginTop:12}}>
+                  <button
+                    style={btnOutline}
+                    onClick={() => setPastPage(p => Math.max(1, p - 1))}
+                    disabled={pastPage <= 1}
+                  >
+                    Prev
+                  </button>
+                  <span style={{opacity:0.9}}>Page {pastPage} / {totalPages}</span>
+                  <button
+                    style={btnOutline}
+                    onClick={() => setPastPage(p => Math.min(totalPages, p + 1))}
+                    disabled={pastPage >= totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>
