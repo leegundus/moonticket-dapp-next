@@ -223,8 +223,8 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   // Helper: render number images for a ticket
   function TicketImages({ t }) {
     const nums = [t.num1, t.num2, t.num3, t.num4].sort((a,b)=>a-b);
-    const wrapper = { display:"inline-flex", gap:6, alignItems:"center", verticalAlign:"middle" };
-    const imgStyle = { width:128, height:128, objectFit:"contain" };
+    const wrapper = { display:"inline-flex", gap:2, alignItems:"center", verticalAlign:"middle" };
+    const imgStyle = { width:80, height:80, objectFit:"contain" };
     return (
       <span style={wrapper}>
         {nums.map((n,i)=>(
