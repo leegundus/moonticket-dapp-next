@@ -250,7 +250,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     setLoadingPast(true);
     try {
       // last drawing window
-      const j = await fetchJSON(`/api/mypastTickets?wallet=${wallet}&window=last&page=${page}&limit=${PAGE_SIZE}`);
+      const j = await fetchJSON(`/api/myPastTickets?wallet=${wallet}&window=last&page=${page}&limit=${PAGE_SIZE}`);
       setPastItems(Array.isArray(j?.items) ? j.items : []);
       setPastTotal(Number(j?.total || (j?.items?.length || 0)));
     } catch (e) {
