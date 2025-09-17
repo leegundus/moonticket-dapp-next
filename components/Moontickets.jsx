@@ -118,7 +118,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const ticketsToCredit = useMemo(() => Math.min(credits, cart.length), [credits, cart.length]);
 
   function openXComposer() {
-    const defaultText = encodeURIComponent("I got my free weekly Moonticket for the jackpot drawing. Get yours at: https://moonticket.io @moonticket__io");
+    const defaultText = encodeURIComponent("I got my free weekly Moonticket for this week's jackpot drawing. Get yours at: https://moonticket.io @moonticket__io");
     window.open(`https://x.com/intent/post?text=${defaultText}`, "_blank", "noopener,noreferrer");
   }
 
@@ -239,6 +239,17 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             <button style={btnOutline} onClick={openXComposer}>Post on X</button>
           </div>
         </div>
+
+        {/* NEW: explanatory text */}
+        <p style={{marginTop:8, fontSize:14, lineHeight:1.4, color:"#e5b400"}}>
+          Claim your <b>free weekly Moonticket</b> in four quick steps:
+          <span> 1) click <i>Post on X</i> to open a pre-filled post,</span>
+          <span> 2) publish it,</span>
+          <span> 3) copy the link to your post,</span>
+          <span> 4) paste it below and press <i>Claim Free Ticket</i>.</span>
+          You’re eligible for <b>one free ticket per drawing</b>.
+        </p>
+
         <div style={{display:"flex", gap:8, alignItems:"center", marginTop:8, flexWrap:"wrap"}}>
           <input
             style={{minWidth:320, background:"#111", color:"#fff", border:"1px solid #444", borderRadius:6, padding:"6px 8px"}}
