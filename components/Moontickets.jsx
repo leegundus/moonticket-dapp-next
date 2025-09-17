@@ -220,24 +220,39 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     cursor: "pointer",
   };
 
+  // Helper: render number images for a ticket
+  function TicketImages({ t }) {
+    const nums = [t.num1, t.num2, t.num3, t.num4].sort((a,b)=>a-b);
+    const wrapper = { display:"inline-flex", gap:6, alignItems:"center", verticalAlign:"middle" };
+    const imgStyle = { width:28, height:28, objectFit:"contain" };
+    return (
+      <span style={wrapper}>
+        {nums.map((n,i)=>(
+          <img key={i} src={`/numbers/yellow/${n}.png`} alt={`${n}`} style={imgStyle} />
+        ))}
+        <img src={`/numbers/green/${t.moonball}.png`} alt={`MB ${t.moonball}`} style={{...imgStyle, marginLeft:4}} />
+      </span>
+    );
+  }
+
   // ---------------------------
-  // Past tickets (NEW)
+  // Last drawing tickets (replaces Past tickets)
   // ---------------------------
   const PAGE_SIZE = 10;
-  const [pastOpen, setPastOpen]     = useState(false);
-  const [pastPage, setPastPage]     = useState(1);
-  const [pastTotal, setPastTotal]   = useState(0);
-  const [pastItems, setPastItems]   = useState([]);
+  const [pastOpen, setPastOpen]       = useState(false);
+  const [pastPage, setPastPage]       = useState(1);
+  const [pastTotal, setPastTotal]     = useState(0);
+  const [pastItems, setPastItems]     = useState([]);
   const [loadingPast, setLoadingPast] = useState(false);
 
   async function loadPastTickets(page = pastPage) {
     if (!wallet) { setPastItems([]); setPastTotal(0); return; }
     setLoadingPast(true);
     try {
-      // expects API to support pagination; adjust if your route differs
-      const j = await fetchJSON(`/api/myPastTickets?wallet=${wallet}&past=1&page=${page}&limit=${PAGE_SIZE}`);
+      // last drawing window
+      const j = await fetchJSON(`/api/mypastTickets?wallet=${wallet}&window=last&page=${page}&limit=${PAGE_SIZE}`);
       setPastItems(Array.isArray(j?.items) ? j.items : []);
-      setPastTotal(Number(j?.total || 0));
+      setPastTotal(Number(j?.total || (j?.items?.length || 0)));
     } catch (e) {
       console.error("pastTickets error:", e);
       setPastItems([]);
@@ -386,16 +401,16 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         ) : (
           <ul style={{listStyle:"none", padding:0, margin:0}}>
             {myTickets.map((t) => (
-              <li key={t.id} style={{marginBottom:6}}>
-                {t.num1}-{t.num2}-{t.num3}-{t.num4} · MB {t.moonball}
-                <span style={{opacity:0.6}}>  {new Date(t.created_at).toLocaleString()}</span>
+              <li key={t.id} style={{marginBottom:6, display:"flex", alignItems:"center", gap:8}}>
+                <TicketImages t={t} />
+                <span style={{opacity:0.6}}> {new Date(t.created_at).toLocaleString()}</span>
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      {/* Past tickets (collapsible) */}
+      {/* Last Drawing Tickets (collapsible) */}
       <div style={{marginTop:24, borderTop:"1px solid #333", paddingTop:16}}>
         <button
           onClick={() => setPastOpen(o => !o)}
@@ -407,7 +422,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             gap:8
           }}
         >
-          {pastOpen ? "▼" : "►"} Past Tickets
+          {pastOpen ? "▼" : "►"} Last Drawing Tickets
         </button>
 
         {pastOpen && (
@@ -415,16 +430,16 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             {loadingPast ? (
               <div style={{opacity:0.8}}>Loading…</div>
             ) : !pastItems.length ? (
-              <div style={{opacity:0.8}}>No past tickets found.</div>
+              <div style={{opacity:0.8}}>No tickets from the last drawing window.</div>
             ) : (
               <>
                 <ul style={{listStyle:"none", padding:0, margin:0}}>
                   {pastItems.map((t) => (
-                    <li key={t.id} style={{marginBottom:6}}>
-                      {t.num1}-{t.num2}-{t.num3}-{t.num4} · MB {t.moonball}
+                    <li key={t.id} style={{marginBottom:6, display:"flex", alignItems:"center", gap:8}}>
+                      <TicketImages t={t} />
                       {t.draw_date && (
                         <span style={{opacity:0.6}}>
-                           {" "}· Draw: {new Date(t.draw_date).toLocaleString()}
+                           · Draw: {new Date(t.draw_date).toLocaleString()}
                         </span>
                       )}
                       {typeof t.prize_tix === "number" || typeof t.prize_sol === "number" ? (
