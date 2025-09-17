@@ -1,119 +1,127 @@
-import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_ANON_KEY!;
-
-const PAGE_SIZE_MAX = 50;
-
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req, res) {
   try {
-    const wallet = String(req.query.wallet || "").trim();
+    const { wallet, page = 1, limit = 10, window } = req.query;
     if (!wallet) return res.status(400).json({ error: "wallet required" });
 
-    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
-    const limitRaw = parseInt(String(req.query.limit || "10"), 10) || 10;
-    const limit = Math.min(Math.max(1, limitRaw), PAGE_SIZE_MAX);
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY
+    );
 
-    const windowSel = String(req.query.window || "").toLowerCase(); // expect "last"
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    // ------------------------------------------------------------
+    // 1) Determine the window
+    //    - "last": tickets created >= prev_draw.draw_date AND < last_draw.draw_date
+    // ------------------------------------------------------------
+    let startIso = null, endIso = null;
+    let jackpotSolEach = 0; // SOL per jackpot winner for the last draw (if any)
 
-    // Get last two draws
-    const { data: draws, error: drawsErr } = await supabase
-      .from("draws")
-      .select("id, draw_date")
-      .order("draw_date", { ascending: false })
-      .limit(2);
+    if (window === "last") {
+      const { data: draws, error: dErr } = await supabase
+        .from("draws")
+        .select("id, draw_date, jackpot_sol")
+        .order("draw_date", { ascending: false })
+        .limit(2);
 
-    if (drawsErr) throw drawsErr;
+      if (dErr) throw dErr;
 
-    const mostRecent = draws?.[0];
-    const secondMost = draws?.[1];
+      const last = draws?.[0] || null;
+      const prev = draws?.[1] || null;
 
-    // Compute window
-    let windowStartISO: string | null = null;
-    let windowEndISO: string | null = null;
-    let scoringDrawId: number | null = null;
+      // If we don't have two draws yet, there's no "last window" to show
+      if (!last || !prev) {
+        return res.json({ items: [], total: 0 });
+      }
 
-    if (windowSel === "last" && mostRecent?.draw_date && secondMost?.draw_date) {
-      // Last-draw window: [secondMost, mostRecent)
-      windowStartISO = new Date(secondMost.draw_date).toISOString();
-      windowEndISO = new Date(mostRecent.draw_date).toISOString();
-      scoringDrawId = mostRecent.id as number;
-    } else if (mostRecent?.draw_date) {
-      // Fallback: anything strictly before the most recent draw
-      windowEndISO = new Date(mostRecent.draw_date).toISOString();
-      scoringDrawId = mostRecent.id as number;
-    } else {
-      // No draws yet → nothing to return
-      return res.status(200).json({ items: [], total: 0 });
+      startIso = new Date(prev.draw_date).toISOString(); // inclusive
+      endIso   = new Date(last.draw_date).toISOString(); // exclusive
+
+      // Compute jackpot SOL/share for the last draw (80% pool snapshot in draw.jackpot_sol)
+      // Count jackpot winner rows using count=exact + head=true (data null, count present)
+      const { error: wErr, count: jpCount } = await supabase
+        .from("prize_awards")
+        .select("id", { count: "exact", head: true })
+        .eq("draw_id", last.id)
+        .eq("tier", "JACKPOT");
+      if (wErr) throw wErr;
+
+      const jackpotCount = Number(jpCount || 0);
+      const jackpotSolTotal = Number(last.jackpot_sol || 0); // already in SOL units
+      jackpotSolEach = jackpotCount > 0 ? jackpotSolTotal / jackpotCount : 0;
     }
 
-    // Base query
+    // ------------------------------------------------------------
+    // 2) Base ticket query for this wallet (windowed if provided)
+    // ------------------------------------------------------------
+    const from = (Number(page) - 1) * Number(limit);
+    const to   = Number(page) * Number(limit) - 1;
+
     let q = supabase
       .from("entries")
-      .select("id,wallet,num1,num2,num3,num4,moonball,created_at", { count: "exact" })
+      .select("id, created_at, num1, num2, num3, num4, moonball", { count: "exact" })
       .eq("wallet", wallet)
-      .not("num1", "is", null)
-      .not("num2", "is", null)
-      .not("num3", "is", null)
-      .not("num4", "is", null)
-      .not("moonball", "is", null)
-      .order("created_at", { ascending: false });
+      .not("num1", "is", null).not("num2", "is", null)
+      .not("num3", "is", null).not("num4", "is", null)
+      .not("moonball", "is", null);
 
-    if (windowStartISO) q = q.gte("created_at", windowStartISO);
-    if (windowEndISO)   q = q.lt("created_at", windowEndISO);
-
-    const { data: items, error: entErr, count } = await q.range(from, to);
-    if (entErr) throw entErr;
-
-    // Attach prize info from the draw that scored this window (the most recent draw)
-    let byId: Record<string, any> = {};
-    (items || []).forEach((t) => { byId[t.id] = { ...t }; });
-
-    if (items && items.length && scoringDrawId != null) {
-      const ids = items.map((t) => t.id);
-      const { data: awards, error: awErr } = await supabase
-        .from("prize_awards")
-        .select("entry_id,tier,payout_tix,tx_sig")
-        .eq("draw_id", scoringDrawId)
-        .in("entry_id", ids);
-
-      if (awErr) throw awErr;
-
-      for (const a of awards || []) {
-        const row = byId[a.entry_id];
-        if (!row) continue;
-        // convert base units string -> human TIX number
-        let humanTix = 0;
-        if (a.payout_tix) {
-          try {
-            const n = BigInt(a.payout_tix as any);
-            humanTix = Number(n) / 1_000_000; // TIX has 6 decimals
-          } catch {}
-        }
-        row.prize_tix = humanTix > 0 ? humanTix : 0; // number
-        row.prize_tier = a.tier || null;
-        row.tx_sig = a.tx_sig || null;
-        // NOTE: jackpot (SOL) amount isn’t stored; frontend will show "WIN" for TIX only.
-      }
+    if (startIso && endIso) {
+      q = q.gte("created_at", startIso).lt("created_at", endIso);
     }
 
-    const enriched = Object.values(byId);
+    q = q.order("created_at", { ascending: false }).range(from, to);
 
-    return res.status(200).json({
-      items: enriched,
-      total: count || 0,
-      windowStart: windowStartISO,
-      windowEnd: windowEndISO,
-      scoringDrawId,
+    const { data: tickets, error: tErr, count } = await q;
+    if (tErr) throw tErr;
+
+    if (!tickets?.length) {
+      return res.json({ items: [], total: count || 0 });
+    }
+
+    // ------------------------------------------------------------
+    // 3) Pull prize rows for these tickets
+    // ------------------------------------------------------------
+    const ids = tickets.map(t => t.id);
+    const { data: awards, error: aErr } = await supabase
+      .from("prize_awards")
+      .select("entry_id, tier, payout_tix, tx_sig");
+    // NOTE: no time filter here—just match these entry_ids.
+    // If you want to be extra strict, add `.in("entry_id", ids)`
+    // (some Supabase versions require it on a separate line for type inference).
+    if (aErr) throw aErr;
+
+    const byEntry = new Map(
+      (awards || []).filter(a => ids.includes(a.entry_id)).map(a => [a.entry_id, a])
+    );
+
+    // ------------------------------------------------------------
+    // 4) Build response with prize info
+    //    - Jackpot => show SOL amount per winner (jackpotSolEach) and tier
+    //    - Secondary => convert payout_tix base units (1e6) to human
+    // ------------------------------------------------------------
+    const items = tickets.map(t => {
+      const a = byEntry.get(t.id);
+      let prize_tix = 0, prize_sol = 0, prize_tier = null, tx_sig = null;
+
+      if (a) {
+        prize_tier = a.tier || null;
+        tx_sig = a.tx_sig || null;
+        if (a.tier === "JACKPOT") {
+          prize_sol = jackpotSolEach;     // SOL per winner for that draw
+          prize_tix = 0;
+        } else {
+          prize_tix = a.payout_tix ? Number(a.payout_tix) / 1_000_000 : 0;
+          prize_sol = 0;
+        }
+      }
+
+      return { ...t, prize_tier, prize_tix, prize_sol, tx_sig };
     });
-  } catch (e: any) {
+
+    return res.json({ items, total: count ?? items.length });
+  } catch (e) {
     console.error("mypastTickets error:", e);
-    return res.status(500).json({ error: e?.message || "Server error" });
+    return res.status(500).json({ error: String(e?.message || e) });
   }
 }
+
