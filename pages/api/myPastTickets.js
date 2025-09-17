@@ -1,61 +1,78 @@
 /* eslint-disable no-console */
 import { createClient } from "@supabase/supabase-js";
 
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY; // server-side only
+
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
 export default async function handler(req, res) {
   try {
-    const { wallet, page = "1", pageSize = "10" } = req.query;
-    if (!wallet) return res.status(400).json({ error: "Missing wallet" });
+    const wallet = String(req.query.wallet || "").trim();
+    const page = Math.max(1, parseInt(req.query.page || "1", 10));
+    const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize || "10", 10)));
 
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return res.status(500).json({ error: "Server not configured" });
+    if (!wallet) {
+      return res.status(400).json({ ok: false, error: "wallet is required" });
+    }
 
-    const supabase = createClient(url, key);
-
+    // 1) Find the MOST RECENT draw time
     const { data: lastDraw, error: drawErr } = await supabase
       .from("draws")
       .select("draw_date")
       .order("draw_date", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (drawErr) throw drawErr;
 
-    if (!lastDraw?.draw_date) {
-      // No draws yet → nothing is “past”
-      return res.status(200).json({ items: [], page: 1, pageSize: Number(pageSize), total: 0 });
+    if (drawErr) {
+      console.error(drawErr);
+      return res.status(500).json({ ok: false, error: "Failed to load draws" });
     }
 
-    const cutoff = new Date(lastDraw.draw_date).toISOString();
-    const p = Math.max(1, parseInt(page, 10) || 1);
-    const ps = Math.min(50, Math.max(1, parseInt(pageSize, 10) || 10));
-    const from = (p - 1) * ps;
-    const to = from + ps - 1;
+    // If no prior draw exists, there are no "past" tickets yet
+    if (!lastDraw?.draw_date) {
+      return res.status(200).json({ ok: true, items: [], total: 0, page, pageSize });
+    }
 
-    const { count: total, error: countErr } = await supabase
-      .from("entries")
-      .select("id", { count: "exact", head: true })
-      .eq("wallet", wallet)
-      .lt("created_at", cutoff)             // ⬅ strictly before last draw
-      .not("num1", "is", null).not("num2", "is", null)
-      .not("num3", "is", null).not("num4", "is", null)
-      .not("moonball", "is", null);
-    if (countErr) throw countErr;
+    const cutoffIso = new Date(lastDraw.draw_date).toISOString(); // trusted server time
 
-    const { data: items, error: listErr } = await supabase
+    // 2) Count past tickets (created strictly BEFORE the last draw)
+    const baseSel =
+      "id,num1,num2,num3,num4,moonball,created_at"; // keep payload small
+
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error, count } = await supabase
       .from("entries")
-      .select("id,created_at,num1,num2,num3,num4,moonball")
+      .select(baseSel, { count: "exact" })
       .eq("wallet", wallet)
-      .lt("created_at", cutoff)             // ⬅ strictly before last draw
-      .not("num1", "is", null).not("num2", "is", null)
-      .not("num3", "is", null).not("num4", "is", null)
+      .lt("created_at", cutoffIso)        // <-- strict past tickets only
+      .not("num1", "is", null)
+      .not("num2", "is", null)
+      .not("num3", "is", null)
+      .not("num4", "is", null)
       .not("moonball", "is", null)
       .order("created_at", { ascending: false })
       .range(from, to);
-    if (listErr) throw listErr;
 
-    return res.status(200).json({ items: items || [], page: p, pageSize: ps, total: total || 0 });
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ ok: false, error: "Failed to load past tickets" });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      items: data || [],
+      total: count ?? (data ? data.length : 0),
+      page,
+      pageSize,
+      cutoff: cutoffIso, // helpful for debugging
+    });
   } catch (e) {
-    console.error("myPastTickets error:", e);
-    return res.status(500).json({ error: "Internal error" });
+    console.error(e);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 }
