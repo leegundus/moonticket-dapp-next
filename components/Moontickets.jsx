@@ -118,7 +118,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const ticketsToCredit = useMemo(() => Math.min(credits, cart.length), [credits, cart.length]);
 
   function openXComposer() {
-    const defaultText = encodeURIComponent("I got my free weekly Moonticket for the jackpot drawing, get yours at: https://moonticket.io@moonticket__io");
+    const defaultText = encodeURIComponent("I got my free weekly Moonticket for the jackpot drawing. Get yours at: https://moonticket.io @moonticket__io");
     window.open(`https://x.com/intent/post?text=${defaultText}`, "_blank", "noopener,noreferrer");
   }
 
