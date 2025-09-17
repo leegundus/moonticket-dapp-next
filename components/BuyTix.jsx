@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Connection, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
-import TweetEntryModal from "./TweetEntryModal";
 
 export default function BuyTix() {
   const { publicKey } = useWallet();
@@ -11,7 +10,6 @@ export default function BuyTix() {
   const [solPriceUsd, setSolPriceUsd] = useState(null);
   const [tixPriceUsd, setTixPriceUsd] = useState(null);
   const [solBalance, setSolBalance] = useState(null);
-  const [showBonusModal, setShowBonusModal] = useState(false);
 
   const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
   const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
@@ -170,23 +168,6 @@ export default function BuyTix() {
                   </p>
                 )}
               </div>
-
-              <div className="mt-6 text-center">
-                <p className="text-white mb-2">Get 1 bonus entry by tweeting!</p>
-                <img
-                  src="/freeTix-button.png"
-                  alt="Claim Bonus Entry"
-                  className="mx-auto cursor-pointer hover:scale-105 transition"
-                  onClick={() => setShowBonusModal(true)}
-                />
-              </div>
-
-              <TweetEntryModal
-                isOpen={showBonusModal}
-                onClose={() => setShowBonusModal(false)}
-                isBonus={true}
-              />
-            </>
           )}
 
           {result && !result.success && (
