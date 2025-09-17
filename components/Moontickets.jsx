@@ -235,7 +235,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     setLoadingPast(true);
     try {
       // expects API to support pagination; adjust if your route differs
-      const j = await fetchJSON(`/api/myTickets?wallet=${wallet}&past=1&page=${page}&limit=${PAGE_SIZE}`);
+      const j = await fetchJSON(`/api/myPastTickets?wallet=${wallet}&past=1&page=${page}&limit=${PAGE_SIZE}`);
       setPastItems(Array.isArray(j?.items) ? j.items : []);
       setPastTotal(Number(j?.total || 0));
     } catch (e) {
