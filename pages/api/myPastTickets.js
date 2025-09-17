@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
-  process.env.SUPABASE_URL,                // server var (NOT next_public)
-  process.env.SUPABASE_SERVICE_ROLE_KEY    // server var (service role, server only)
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 export default async function handler(req, res) {
@@ -15,44 +15,53 @@ export default async function handler(req, res) {
     const from = (p - 1) * ps;
     const to = from + ps - 1;
 
-    // 1) Find the most recent draw (cutoff)
-    const { data: lastDraw, error: drawErr } = await supabase
+    // Grab the two most-recent draws
+    const { data: draws, error: drawsErr } = await supabase
       .from("draws")
       .select("id, draw_date")
       .order("draw_date", { ascending: false })
-      .limit(1)
-      .single();
+      .limit(2);
 
-    if (drawErr) throw drawErr;
+    if (drawsErr) throw drawsErr;
 
-    // If no draws yet, there are no "past" tickets by definition
-    if (!lastDraw?.draw_date) {
+    if (!draws || draws.length === 0) {
+      // No draws yet → nothing "past"
       return res.status(200).json({
         items: [],
         total: 0,
         page: p,
         pageSize: ps,
-        cutoff: null,
+        window: { start: null, end: null }
       });
     }
 
-    const cutoffIso = new Date(lastDraw.draw_date).toISOString();
+    const lastDrawDate = new Date(draws[0].draw_date).toISOString();
+    const prevDrawDate =
+      draws.length > 1 ? new Date(draws[1].draw_date).toISOString() : null;
 
-    // 2) Tickets strictly BEFORE the last draw time (i.e., truly past)
-    const baseFilter = supabase
+    // Base filter: wallet + valid numbers, most-recent first
+    let query = supabase
       .from("entries")
-      .select("id,wallet,entry_type,num1,num2,num3,num4,moonball,created_at", { count: "exact" })
+      .select(
+        "id,wallet,entry_type,num1,num2,num3,num4,moonball,created_at",
+        { count: "exact" }
+      )
       .eq("wallet", wallet)
-      .lt("created_at", cutoffIso)        // 🔑 past: older than last draw
       .not("num1", "is", null)
       .not("num2", "is", null)
       .not("num3", "is", null)
       .not("num4", "is", null)
       .not("moonball", "is", null)
+      // strictly before the latest draw (so nothing from the current window)
+      .lt("created_at", lastDrawDate)
       .order("created_at", { ascending: false });
 
-    // Get page of rows
-    const { data: items, error: itemsErr, count } = await baseFilter.range(from, to);
+    // If we know the previous draw, clamp the window to just that past period
+    if (prevDrawDate) {
+      query = query.gte("created_at", prevDrawDate);
+    }
+
+    const { data: items, error: itemsErr, count } = await query.range(from, to);
     if (itemsErr) throw itemsErr;
 
     return res.status(200).json({
@@ -60,7 +69,7 @@ export default async function handler(req, res) {
       total: count ?? 0,
       page: p,
       pageSize: ps,
-      cutoff: cutoffIso,
+      window: { start: prevDrawDate, end: lastDrawDate }
     });
   } catch (e) {
     console.error("myPastTickets error:", e);
