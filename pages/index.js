@@ -41,7 +41,7 @@ export default function Home() {
               <tr className="hover:bg-yellow-300/5">
                 <td className="px-4 py-3 font-semibold">Jackpot</td>
                 <td className="px-4 py-3">4 numbers + Moonball</td>
-                <td className="px-4 py-3 text-right">80% of Treasury (SOL)</td>
+                <td className="px-4 py-3 text-right">Jackpot (SOL)</td>
               </tr>
               <tr className="hover:bg-yellow-300/5">
                 <td className="px-4 py-3 font-semibold">4</td>

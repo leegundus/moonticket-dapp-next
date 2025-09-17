@@ -69,7 +69,7 @@ export default function BuyTix() {
       await connection.confirmTransaction({ signature: sig1 }, "confirmed");
 
       // Step 2: Trigger TIX transfer from backend (server signs & sends; no Phantom warning)
-        const res2 = await fetch("/api/buyTix", {
+      const res2 = await fetch("/api/buyTix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -77,11 +77,11 @@ export default function BuyTix() {
           solAmount: parseFloat(solInput),
         }),
       });
-     const data = await res2.json();
-     if (!data.success) throw new Error(data.error || "TIX transfer failed");
+      const data = await res2.json();
+      if (!data.success) throw new Error(data.error || "TIX transfer failed");
 
-    setResult(data);
-    fetchSolBalance();  
+      setResult(data);
+      fetchSolBalance();
     } catch (err) {
       console.error("Buy TIX failed:", err);
       setResult({ success: false, error: "Failed to buy TIX" });
@@ -168,6 +168,7 @@ export default function BuyTix() {
                   </p>
                 )}
               </div>
+            </>
           )}
 
           {result && !result.success && (
