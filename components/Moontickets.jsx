@@ -317,6 +317,13 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
           Claim adds a <b>credit</b>. Use it at checkout on your next ticket.
         </div>
       </div>
+       
+      {/* Instructions for users */}
+      <div style={{ marginBottom: 8, fontSize: 14, color: "#fbbf24", lineHeight: 1.4 }}>
+        Use your available <b>credits</b> to generate tickets. 
+        Then click <b>Quick Pick</b> or <b>Add Ticket</b> to select numbers. 
+        When ready, click <b>Buy Tickets</b> to enter the drawing.
+      </div>
 
       {/* Build tickets */}
       <div style={{display:"flex", gap:8, marginBottom:12, flexWrap:"wrap"}}>
@@ -434,23 +441,19 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
               <>
                 <ul style={{listStyle:"none", padding:0, margin:0}}>
                   {pastItems.map((t) => (
-                    <li key={t.id} style={{marginBottom:6, display:"flex", alignItems:"center", gap:8}}>
+                  <li key={t.id} style={{ marginBottom: 12 }}>
+                    {/* numbers on their own line */}
+                    <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
                       <TicketImages t={t} />
-                      {t.draw_date && (
-                        <span style={{opacity:0.6}}>
-                           · Draw: {new Date(t.draw_date).toLocaleString()}
-                        </span>
-                      )}
-                      {typeof t.prize_tix === "number" || typeof t.prize_sol === "number" ? (
-                        <span style={{marginLeft:6, color:"#9FE870"}}>
-                          {t.prize_sol > 0
-                            ? ` • WIN: ${(t.prize_sol).toFixed(6)} SOL`
-                            : t.prize_tix > 0
-                              ? ` • WIN: ${Number(t.prize_tix).toLocaleString()} TIX`
-                              : ` • No prize`}
-                        </span>
-                      ) : null}
-                    </li>
+                    </div>
+
+                   {/* status on the next line so it can't overlap on mobile */}
+                   {(t.prize_sol > 0 || t.prize_tix > 0) && (
+                     <div style={{ marginTop: 6, color: "#9FE870", fontWeight: 700 }}>
+                       • WIN: {t.prize_sol > 0 ? `${t.prize_sol.toFixed(6)} SOL` : `${t.prize_tix.toLocaleString()} TIX`}
+                     </div>
+                   )}
+                 </li>   
                   ))}
                 </ul>
 
