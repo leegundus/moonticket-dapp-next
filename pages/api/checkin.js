@@ -79,7 +79,8 @@ export default async function handler(req, res) {
     if (!ataInfo) {
       instructions.push(
         createAssociatedTokenAccountInstruction(
-          TREASURY_KEYPAIR.publicKey,
+          // CHANGED: make the USER the payer of ATA creation
+          userPublicKey,
           userATA,
           userPublicKey,
           TIX_MINT
@@ -97,7 +98,10 @@ export default async function handler(req, res) {
     );
 
     const transaction = new Transaction().add(...instructions);
-    transaction.feePayer = TREASURY_KEYPAIR.publicKey;
+
+    // CHANGED: user pays the tx fees
+    transaction.feePayer = userPublicKey;
+
     transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
     const base64Tx = transaction.serialize({ requireAllSignatures: false }).toString("base64");
