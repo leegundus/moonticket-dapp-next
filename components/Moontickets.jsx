@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
+import useJackpotData from "../hooks/useJackpotData";
+import useCountdown from "../hooks/useCountdown";
 
 const range = (n, start=1) => Array.from({length:n}, (_,i)=>i+start);
 const MAIN_POOL = range(25, 1);
 const MOON_POOL = range(10, 1);
 const TIX_PER_TICKET = 10_000; // informational
+
+// --- Buy flow constants (same as your BuyTix.jsx) ---
+const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
+const OPS_WALLET       = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
 
 function quickPickOne() {
   const pool = [...MAIN_POOL];
@@ -46,6 +52,7 @@ async function fetchJSON(url, opts) {
 }
 
 export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
+  // ---------------- Wallet glue ----------------
   const [wallet, setWallet] = useState(publicKey?.toString?.() || "");
   useEffect(() => { if (publicKey?.toString) setWallet(publicKey.toString()); }, [publicKey]);
   useEffect(() => {
@@ -59,7 +66,23 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     return () => { s?.off?.("connect", onConnect); s?.off?.("accountChanged", onAcct); };
   }, [wallet]);
 
-  // SOL balance
+  // ---------------- Jackpot header ----------------
+  const jackpot = useJackpotData(); // { jackpotSol }
+  const { moonCountdown, nextMoonDrawDate } = useCountdown();
+  const [solPrice, setSolPrice] = useState(0);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/prices");
+        const data = await res.json();
+        setSolPrice(data.solPriceUsd || 0);
+      } catch {}
+    })();
+  }, []);
+  const jackpotSol = jackpot?.jackpotSol || 0;
+  const jackpotUsd = solPrice > 0 ? jackpotSol * solPrice : 0;
+
+  // ---------------- Balances ----------------
   const [solBalance, setSolBalance] = useState(0);
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +99,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     return () => { cancelled = true; clearInterval(id); };
   }, [wallet]);
 
+  // ---------------- Ticket builder ----------------
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
   const [credits, setCredits] = useState(0);
@@ -117,10 +141,11 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
   const ticketsToCredit = useMemo(() => Math.min(credits, cart.length), [credits, cart.length]);
 
-  function openXComposer() {
-    const defaultText = encodeURIComponent("I got my free weekly Moonticket for this week's jackpot drawing. Get yours at: https://moonticket.io @moonticket__io");
-    window.open(`https://x.com/intent/post?text=${defaultText}`, "_blank", "noopener,noreferrer");
-  }
+  // ---------------- Free ticket flow ----------------
+  const postText = encodeURIComponent(
+    "I got my free weekly Moonticket for this week's jackpot drawing. Get yours at: https://moonticket.io @moonticket__io"
+  );
+  const INTENT_X  = `https://x.com/intent/post?text=${postText}`;
 
   async function claimFree() {
     if (!wallet) return alert("Connect wallet first");
@@ -143,84 +168,94 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     }
   }
 
-  async function buyTickets() {
-    const addr = wallet;
-    if (!addr) return alert("Please connect wallet first");
-    if (!cart.length) return alert("Add at least one ticket");
-    for (const t of cart) {
-      const err = validateTicket(t);
-      if (err) return alert(err);
-    }
+  // ---------------- Buy TIX (from BuyTix.jsx) ----------------
+  const [solInput, setSolInput] = useState("");
+  const [loadingBuy, setLoadingBuy] = useState(false);
+  const [resultBuy, setResultBuy] = useState(null);
+  const [solPriceUsd, setSolPriceUsd] = useState(null);
+  const [tixPriceUsd, setTixPriceUsd] = useState(null);
 
-    setLoading(true);
+  useEffect(() => {
+    const fetchPrices = async () => {
+      const res = await fetch("/api/prices");
+      const data = await res.json();
+      setSolPriceUsd(data.solPriceUsd);
+      setTixPriceUsd(data.tixPriceUsd);
+    };
+    fetchPrices();
+  }, []);
+
+  const solTyped = Number(solInput || 0);
+  const usdPreview = solPriceUsd != null && !Number.isNaN(solTyped) ? solTyped * solPriceUsd : 0;
+  const creditsPreview = Math.floor(usdPreview + 1e-6); // 1 credit per $1
+  const tixPreview = tixPriceUsd != null && tixPriceUsd > 0
+    ? Math.floor(usdPreview / tixPriceUsd)
+    : 0;
+
+  const creditsEarned =
+    resultBuy && resultBuy.success && typeof resultBuy.usdSpent === "number"
+      ? Math.floor(resultBuy.usdSpent + 1e-6)
+      : null;
+
+  const handleBuy = async () => {
+    if (!wallet || isNaN(parseFloat(solInput))) return;
+    setLoadingBuy(true);
+    setResultBuy(null);
+
     try {
-      const prep = await fetchJSON("/api/powerballEntryTx", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          wallet: addr,
-          tickets: cart,
-          tixCostPerTicket: TIX_PER_TICKET,
-          useCredits: ticketsToCredit
-        })
-      });
-      if (!prep?.ok) throw new Error(prep?.error || "Failed to prepare");
+      const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
+      const userPubkey = new PublicKey(wallet);
+      const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
+      const opsLamports = Math.floor(totalLamports * 0.01);
+      const treasuryLamports = totalLamports - opsLamports;
 
-      const fin = await fetchJSON("/api/powerballEntryFinalize", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          wallet: addr,
-          signature: null,
-          tickets: cart,
-          expectedTotalBase: 0,
-          lockedCredits: prep.lockedCredits || 0
+      // user → Treasury + Ops
+      const tx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: userPubkey,
+          toPubkey: TREASURY_WALLET,
+          lamports: treasuryLamports,
+        }),
+        SystemProgram.transfer({
+          fromPubkey: userPubkey,
+          toPubkey: OPS_WALLET,
+          lamports: opsLamports,
         })
-      });
-      if (!fin?.ok) throw new Error(fin?.error || "Finalize failed");
+      );
 
-      setCart([]);
-      await onRefresh?.();
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = userPubkey;
+
+      const sigRes = await window.solana.signAndSendTransaction(tx);
+      const sig1 = typeof sigRes === "string" ? sigRes : sigRes.signature;
+      await connection.confirmTransaction({ signature: sig1 }, "confirmed");
+
+      // backend sends TIX
+      const res2 = await fetch("/api/buyTix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          walletAddress: wallet,
+          solAmount: parseFloat(solInput),
+        }),
+      });
+      const data = await res2.json();
+      if (!data.success) throw new Error(data.error || "TIX transfer failed");
+
+      setResultBuy(data);
+      // refresh balance + credits (credits are $-based)
+      try { const lam = await connection.getBalance(userPubkey); setSolBalance(lam/1e9); } catch {}
       await fetchCredits();
-      await loadMyTickets();
-      alert(`Tickets submitted: ${fin.inserted} (credits used: ${prep.lockedCredits || 0})`);
-    } catch (e) {
-      console.error(e);
-      alert(e.message);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error("Buy TIX failed:", err);
+      setResultBuy({ success: false, error: "Failed to buy TIX" });
     }
-  }
 
-  const selectStyle = {
-    backgroundColor: "#fff",
-    color: "#000",
-    border: "1px solid #444",
-    borderRadius: 6,
-    padding: "4px 6px",
+    setLoadingBuy(false);
   };
 
-  const btn = {
-    background: "#fbbf24",
-    color: "#000",
-    border: "none",
-    borderRadius: 8,
-    padding: "8px 12px",
-    fontWeight: 700,
-    cursor: "pointer",
-  };
-
-  const btnOutline = {
-    background: "transparent",
-    color: "#fbbf24",
-    border: "1px solid #fbbf24",
-    borderRadius: 8,
-    padding: "6px 10px",
-    fontWeight: 600,
-    cursor: "pointer",
-  };
-
-  // Helper: render number images for a ticket
+  // ---------------- Helper: number images ----------------
   function TicketImages({ t }) {
     const nums = [t.num1, t.num2, t.num3, t.num4].sort((a,b)=>a-b);
     const wrapper = { display:"inline-flex", gap:2, alignItems:"center", verticalAlign:"middle" };
@@ -235,9 +270,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     );
   }
 
-  // ---------------------------
-  // Last drawing tickets (replaces Past tickets)
-  // ---------------------------
+  // ---------------- Last drawing tickets ----------------
   const PAGE_SIZE = 10;
   const [pastOpen, setPastOpen]       = useState(false);
   const [pastPage, setPastPage]       = useState(1);
@@ -249,7 +282,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     if (!wallet) { setPastItems([]); setPastTotal(0); return; }
     setLoadingPast(true);
     try {
-      // last drawing window
       const j = await fetchJSON(`/api/myPastTickets?wallet=${wallet}&window=last&page=${page}&limit=${PAGE_SIZE}`);
       setPastItems(Array.isArray(j?.items) ? j.items : []);
       setPastTotal(Number(j?.total || (j?.items?.length || 0)));
@@ -263,16 +295,9 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   }
 
   useEffect(() => { if (pastOpen) loadPastTickets(1); }, [wallet, pastOpen]);
-  useEffect(() => { if (pastOpen) loadPastTickets(pastPage); }, [pastPage]); // page change
+  useEffect(() => { if (pastOpen) loadPastTickets(pastPage); }, [pastPage]);
 
   const totalPages = Math.max(1, Math.ceil(pastTotal / PAGE_SIZE));
-
-  // ---------- Option A constants for "Post on X" ----------
-  const postText = encodeURIComponent(
-    "I got my free weekly Moonticket for this week's jackpot drawing. Get yours at: https://moonticket.io @moonticket__io"
-  );
-  const INTENT_X  = `https://x.com/intent/post?text=${postText}`;
-  const INTENT_TW = `https://twitter.com/intent/tweet?text=${postText}`;
 
   return (
     <div
@@ -280,29 +305,56 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         maxWidth: 900,
         margin: "0 auto",
         padding: "24px",
-        // increased to clear the nav thoroughly
         paddingTop: "40px",
       }}
     >
+      {/* ------- Jackpot header ------- */}
+      <div style={{ border:"1px solid #333", borderRadius:8, padding:12, marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, flexWrap:"wrap", alignItems:"center" }}>
+          <div style={{ textAlign:"left" }}>
+            <div style={{ fontSize:18, fontWeight:700 }}>Current Jackpot</div>
+            <div style={{ fontSize:16 }}>
+              {jackpotSol.toFixed(4)} SOL
+              {solPrice > 0 && <> (~${jackpotUsd.toFixed(2)} USD)</>}
+            </div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontSize:16, fontWeight:700 }}>Next Moon Draw</div>
+            <div style={{ fontSize:14 }}>
+              <b>Next Draw:</b> {nextMoonDrawDate || "..."}
+            </div>
+            <div style={{ fontSize:14 }}>
+              <b>Countdown:</b> {moonCountdown || "..."}
+            </div>
+          </div>
+        </div>
+      </div>
 
-      {/* Weekly free credit */}
+      {/* ------- Weekly free credit ------- */}
       <div style={{border:"1px solid #333", borderRadius:8, padding:12, marginBottom:16}}>
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap"}}>
           <div style={{fontWeight:600}}>Weekly Free Ticket</div>
           <div style={{display:"flex", gap:8}}>
-            {/* Replaced button with anchor (Option A) */}
             <a
               href={INTENT_X}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ ...btnOutline, display: "inline-block", textDecoration: "none" }}
+              style={{ 
+                background: "transparent",
+                color: "#fbbf24",
+                border: "1px solid #fbbf24",
+                borderRadius: 8,
+                padding: "6px 10px",
+                fontWeight: 600,
+                cursor: "pointer",
+                textDecoration:"none"
+              }}
             >
               Post on X
             </a>
           </div>
         </div>
 
-        {/* NEW: explanatory text */}
         <p style={{marginTop:8, fontSize:14, lineHeight:1.4, color:"#e5b400"}}>
           Claim your <b>free weekly Moonticket</b> in four quick steps:
           <span> 1) click <i>Post on X</i> to open a pre-filled post,</span>
@@ -319,7 +371,19 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             onChange={e=>setTweetUrl(e.target.value)}
             placeholder="Paste tweet URL (required)"
           />
-          <button style={btn} onClick={claimFree} disabled={loading || !tweetOk}>
+          <button
+            style={{
+              background: "#fbbf24",
+              color: "#000",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+            onClick={claimFree}
+            disabled={loading || !tweetOk}
+          >
             Claim Free Ticket
           </button>
         </div>
@@ -333,17 +397,83 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         </div>
       </div>
 
-      {/* Instructions for users */}
+      {/* ------- Buy TIX (embedded) ------- */}
+      <div style={{ border:"1px solid #333", borderRadius:8, padding:12, marginBottom:16 }}>
+        <div style={{ fontWeight:700, marginBottom:6 }}>Buy TIX</div>
+        {!wallet ? (
+          <div>Connect wallet to buy TIX.</div>
+        ) : (
+          <>
+            <p>
+              Live SOL: ${solPriceUsd?.toFixed(2) || "?"} | TIX: ${tixPriceUsd?.toFixed(5) || "?"}
+            </p>
+            <p style={{ opacity:0.9, marginTop:4 }}>SOL Balance: {solBalance?.toFixed(4) || "?"} SOL</p>
+
+            <div style={{ marginTop:8, marginBottom:8 }}>
+              <label>Enter SOL:</label>
+              <input
+                type="number"
+                value={solInput}
+                onChange={(e) => setSolInput(e.target.value)}
+                placeholder="e.g. 0.05"
+                style={{ marginLeft:8, background:"#fff", color:"#000", padding:"6px 8px", borderRadius:6, width:120 }}
+              />
+            </div>
+
+            {wallet && solPriceUsd != null && tixPriceUsd != null && solTyped > 0 && (
+              <div style={{ marginBottom:8 }}>
+                <p>USD est: <strong>${usdPreview.toFixed(2)}</strong></p>
+                <p>You’ll receive: <strong>{tixPreview.toLocaleString()}</strong> TIX</p>
+                <p>You’ll get: <strong>{creditsPreview}</strong> ticket credit{creditsPreview === 1 ? "" : "s"}</p>
+              </div>
+            )}
+
+            {resultBuy && resultBuy.success ? (
+              <div style={{ marginBottom:8, color:"#9FE870" }}>
+                <p><strong>You’ll receive:</strong> {resultBuy.tixAmount.toLocaleString()} TIX</p>
+                <p>using {resultBuy.solAmount} SOL (~${resultBuy.usdSpent.toFixed(2)} USD)</p>
+                <p>Rate: ${resultBuy.tixPriceUsd?.toFixed(5)} | SOL: ${resultBuy.solPriceUsd?.toFixed(2)}</p>
+                {creditsEarned != null && (
+                  <p className="mt-1">
+                    You received <strong>{creditsEarned}</strong> ticket credit{creditsEarned === 1 ? "" : "s"}.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {resultBuy && !resultBuy.success && (
+              <div style={{ marginTop:8, color:"#ff6b6b" }}>
+                <p>{resultBuy.error || "An error occurred."}</p>
+              </div>
+            )}
+
+            <img
+              src="/buyTix-button.png"
+              alt="Buy $TIX"
+              onClick={handleBuy}
+              style={{ display:"block", margin:"12px auto 4px", width:256, height:"auto", cursor:"pointer" }}
+            />
+          </>
+        )}
+      </div>
+
+      {/* ------- Builder instructions ------- */}
       <div style={{ marginBottom: 8, fontSize: 14, color: "#fbbf24", lineHeight: 1.4 }}>
         Use your available <b>credits</b> to generate tickets.
         Then click <b>Quick Pick</b> or <b>Add Ticket</b> to select numbers.
         When ready, click <b>Buy Tickets</b> to enter the drawing.
       </div>
 
-      {/* Build tickets */}
+      {/* ------- Build tickets ------- */}
       <div style={{display:"flex", gap:8, marginBottom:12, flexWrap:"wrap"}}>
-        <button style={btnOutline} onClick={addQuickPick}>+ Quick Pick</button>
-        <button style={btnOutline} onClick={addBlankTicket}>+ Add Ticket</button>
+        <button
+          style={{ background:"transparent", color:"#fbbf24", border:"1px solid #fbbf24", borderRadius:8, padding:"6px 10px", fontWeight:600, cursor:"pointer" }}
+          onClick={addQuickPick}
+        >+ Quick Pick</button>
+        <button
+          style={{ background:"transparent", color:"#fbbf24", border:"1px solid #fbbf24", borderRadius:8, padding:"6px 10px", fontWeight:600, cursor:"pointer" }}
+          onClick={addBlankTicket}
+        >+ Add Ticket</button>
       </div>
 
       {cart.map((t, idx) => (
@@ -360,7 +490,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             {["num1","num2","num3","num4"].map(fieldKey => (
               <select
                 key={fieldKey}
-                style={selectStyle}
+                style={{ backgroundColor: "#fff", color: "#000", border: "1px solid #444", borderRadius: 6, padding: "4px 6px" }}
                 value={t[fieldKey]}
                 onChange={e=>updateTicket(idx, { [fieldKey]: Number(e.target.value) })}
               >
@@ -372,11 +502,10 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
               </select>
             ))}
 
-            {/* Moonball label + select kept together on one line (mobile too) */}
             <span style={{display:"inline-flex", alignItems:"center", gap:6, whiteSpace:"nowrap"}}>
               <span>Moonball</span>
               <select
-                style={selectStyle}
+                style={{ backgroundColor: "#fff", color: "#000", border: "1px solid #444", borderRadius: 6, padding: "4px 6px" }}
                 value={t.moonball}
                 onChange={e=>updateTicket(idx, {moonball: Number(e.target.value)})}
               >
@@ -384,7 +513,10 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
               </select>
             </span>
 
-            <button style={btnOutline} onClick={()=>updateTicket(idx, quickPickOne())}>Quick Pick</button>
+            <button
+              style={{ background:"transparent", color:"#fbbf24", border:"1px solid #fbbf24", borderRadius:8, padding:"6px 10px", fontWeight:600, cursor:"pointer" }}
+              onClick={()=>updateTicket(idx, quickPickOne())}
+            >Quick Pick</button>
           </div>
           <div style={{marginTop:6, fontSize:12, opacity:0.7}}>
             4 unique 1–25 + Moonball 1–10.
@@ -392,30 +524,81 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         </div>
       ))}
 
-      {/* Totals (trimmed & compact) */}
+      {/* Totals */}
       <div style={{display:"flex", flexWrap:"wrap", gap:16, alignItems:"center", marginTop:12}}>
         <div><b>Total tickets:</b> {cart.length}</div>
         <div><b>Credits available:</b> {credits}</div>
         <div><b>Applying credits:</b> {ticketsToCredit}</div>
       </div>
 
-      {/* Wallet / misc (trimmed to only refresh) */}
+      {/* Refresh */}
       <div style={{display:"flex", flexWrap:"wrap", gap:12, alignItems:"center", marginTop:6, opacity:0.9}}>
         <button
-          style={btnOutline}
+          style={{ background:"transparent", color:"#fbbf24", border:"1px solid #fbbf24", borderRadius:8, padding:"6px 10px", fontWeight:600, cursor:"pointer" }}
           onClick={async () => { await fetchCredits(); await loadMyTickets(); }}
         >
           Refresh
         </button>
       </div>
 
+      {/* Submit tickets (entry finalize) */}
       <div style={{marginTop:12}}>
-        <button style={{...btn, padding:"10px 16px"}} disabled={loading || !cart.length} onClick={buyTickets}>
+        <button
+          style={{ background: "#fbbf24", color: "#000", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: "pointer" }}
+          disabled={loading || !cart.length}
+          onClick={async () => {
+            const addr = wallet;
+            if (!addr) return alert("Please connect wallet first");
+            if (!cart.length) return alert("Add at least one ticket");
+            for (const t of cart) {
+              const err = validateTicket(t);
+              if (err) return alert(err);
+            }
+            setLoading(true);
+            try {
+              const prep = await fetchJSON("/api/powerballEntryTx", {
+                method: "POST",
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify({
+                  wallet: addr,
+                  tickets: cart,
+                  tixCostPerTicket: TIX_PER_TICKET,
+                  useCredits: ticketsToCredit
+                })
+              });
+              if (!prep?.ok) throw new Error(prep?.error || "Failed to prepare");
+
+              const fin = await fetchJSON("/api/powerballEntryFinalize", {
+                method: "POST",
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify({
+                  wallet: addr,
+                  signature: null,
+                  tickets: cart,
+                  expectedTotalBase: 0,
+                  lockedCredits: prep.lockedCredits || 0
+                })
+              });
+              if (!fin?.ok) throw new Error(fin?.error || "Finalize failed");
+
+              setCart([]);
+              await onRefresh?.();
+              await fetchCredits();
+              await loadMyTickets();
+              alert(`Tickets submitted: ${fin.inserted} (credits used: ${prep.lockedCredits || 0})`);
+            } catch (e) {
+              console.error(e);
+              alert(e.message);
+            } finally {
+              setLoading(false);
+            }
+          }}
+        >
           {loading ? "Processing..." : `Buy Tickets Now`}
         </button>
       </div>
 
-      {/* My tickets (current drawing) */}
+      {/* Current tickets */}
       <div style={{marginTop:24}}>
         <div style={{fontWeight:700, marginBottom:8}}>My Tickets (current drawing)</div>
         {!myTickets.length ? (
@@ -431,16 +614,13 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         )}
       </div>
 
-      {/* Last Drawing Tickets (collapsible) */}
+      {/* Last drawing tickets */}
       <div style={{marginTop:24, borderTop:"1px solid #333", paddingTop:16}}>
         <button
           onClick={() => setPastOpen(o => !o)}
           style={{
-            ...btnOutline,
-            padding:"8px 12px",
-            display:"inline-flex",
-            alignItems:"center",
-            gap:8
+            background:"transparent", color:"#fbbf24", border:"1px solid #fbbf24",
+            borderRadius:8, padding:"8px 12px", display:"inline-flex", alignItems:"center", gap:8, fontWeight:600, cursor:"pointer"
           }}
         >
           {pastOpen ? "▼" : "►"} Last Drawing Tickets
@@ -456,26 +636,22 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
               <>
                 <ul style={{listStyle:"none", padding:0, margin:0}}>
                   {pastItems.map((t) => (
-                  <li key={t.id} style={{ marginBottom: 12 }}>
-                    {/* numbers on their own line */}
-                    <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
-                      <TicketImages t={t} />
-                    </div>
-
-                   {/* status on the next line so it can't overlap on mobile */}
-                   {(t.prize_sol > 0 || t.prize_tix > 0) && (
-                     <div style={{ marginTop: 6, color: "#9FE870", fontWeight: 700 }}>
-                       • WIN: {t.prize_sol > 0 ? `${t.prize_sol.toFixed(6)} SOL` : `${t.prize_tix.toLocaleString()} TIX`}
-                     </div>
-                   )}
-                 </li>
+                    <li key={t.id} style={{ marginBottom: 12 }}>
+                      <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
+                        <TicketImages t={t} />
+                      </div>
+                      {(t.prize_sol > 0 || t.prize_tix > 0) && (
+                        <div style={{ marginTop: 6, color: "#9FE870", fontWeight: 700 }}>
+                          • WIN: {t.prize_sol > 0 ? `${t.prize_sol.toFixed(6)} SOL` : `${t.prize_tix.toLocaleString()} TIX`}
+                        </div>
+                      )}
+                    </li>
                   ))}
                 </ul>
 
-                {/* Pagination */}
                 <div style={{display:"flex", gap:8, alignItems:"center", marginTop:12}}>
                   <button
-                    style={btnOutline}
+                    style={{ background:"transparent", color:"#fbbf24", border:"1px solid #fbbf24", borderRadius:8, padding:"6px 10px", fontWeight:600, cursor:"pointer" }}
                     onClick={() => setPastPage(p => Math.max(1, p - 1))}
                     disabled={pastPage <= 1}
                   >
@@ -483,7 +659,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
                   </button>
                   <span style={{opacity:0.9}}>Page {pastPage} / {totalPages}</span>
                   <button
-                    style={btnOutline}
+                    style={{ background:"transparent", color:"#fbbf24", border:"1px solid #fbbf24", borderRadius:8, padding:"6px 10px", fontWeight:600, cursor:"pointer" }}
                     onClick={() => setPastPage(p => Math.min(totalPages, p + 1))}
                     disabled={pastPage >= totalPages}
                   >
