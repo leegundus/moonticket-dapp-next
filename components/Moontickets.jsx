@@ -51,110 +51,6 @@ async function fetchJSON(url, opts) {
   return data ?? {};
 }
 
-// --- FlipCountdown (drop-in) ---
-function FlipCountdown({ targetISO }) {
-  const target = new Date(targetISO).getTime();
-  const [now, setNow] = React.useState(Date.now());
-
-  React.useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  let diff = Math.max(0, target - now);
-  const days = Math.floor(diff / 86400000); diff %= 86400000;
-  const hours = Math.floor(diff / 3600000); diff %= 3600000;
-  const minutes = Math.floor(diff / 60000);
-
-  return (
-    <div className="flip-wrap">
-      <FlipUnit label="DAYS" value={days} pad={2} />
-      <FlipUnit label="HOURS" value={hours} pad={2} />
-      <FlipUnit label="MINUTES" value={minutes} pad={2} />
-      <style jsx>{`
-        .flip-wrap {
-          display: flex; gap: 16px; justify-content: center; align-items: flex-start;
-          flex-wrap: wrap;
-        }
-      `}</style>
-    </div>
-  );
-}
-
-function FlipUnit({ label, value, pad = 2 }) {
-  const [prev, setPrev] = React.useState(value);
-  const [animKey, setAnimKey] = React.useState(0);
-
-  React.useEffect(() => {
-    if (value !== prev) {
-      setPrev(value);
-      setAnimKey((k) => k + 1);
-    }
-  }, [value, prev]);
-
-  const text = String(value).padStart(pad, "0");
-
-  return (
-    <div className="unit">
-      <div className="card" key={animKey}>
-        <div className="top">{text}</div>
-        <div className="bottom">{text}</div>
-        <div className="flip">
-          <div className="flip-front">{text}</div>
-          <div className="flip-back">{text}</div>
-        </div>
-      </div>
-      <div className="label">{label}</div>
-
-      <style jsx>{`
-        .unit { text-align: center; color:#fbbf24; }
-        .label { margin-top: 8px; letter-spacing: 1px; font-weight: 700; }
-        .card {
-          position: relative;
-          width: 96px; height: 86px;   /* <- size; bump up/down as you like */
-          background: #0b0b0b; border: 2px solid #fbbf24; border-radius: 12px;
-          box-shadow: 0 6px 0 rgba(251,191,36,0.25) inset;
-          perspective: 600px;
-          display:grid; place-items:center;
-          font-size: 42px; font-weight: 800; line-height: 1;
-        }
-        .top, .bottom, .flip, .flip-front, .flip-back {
-          position:absolute; left:0; right:0;
-          display:flex; align-items:center; justify-content:center;
-        }
-        .top, .bottom {
-          height:50%; overflow:hidden; backface-visibility:hidden;
-        }
-        .top   { top:0;    border-bottom:1px solid rgba(255,255,255,0.08); }
-        .bottom{ bottom:0; border-top:1px solid rgba(0,0,0,0.6); }
-
-        /* flip piece */
-        .flip {
-          top:0; bottom:0; transform-style:preserve-3d; animation: flip 700ms ease-in-out forwards;
-        }
-        .flip-front, .flip-back {
-          height:50%; overflow:hidden; backface-visibility:hidden;
-          background: #0b0b0b;
-        }
-        .flip-front { top:0;  transform-origin: bottom; border-bottom:1px solid rgba(255,255,255,0.08); }
-        .flip-back  { bottom:0; transform-origin: top; transform: rotateX(180deg); border-top:1px solid rgba(0,0,0,0.6); }
-
-        @keyframes flip {
-          0%   { transform: rotateX(0); }
-          49%  { transform: rotateX(-90deg); }
-          50%  { transform: rotateX(-90deg); }
-          100% { transform: rotateX(-180deg); }
-        }
-
-        /* Responsive tweak for small phones */
-        @media (max-width: 380px) {
-          .card { width: 82px; height: 74px; font-size: 36px; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
 export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   // ---------------- Wallet glue ----------------
   const [wallet, setWallet] = useState(publicKey?.toString?.() || "");
@@ -171,29 +67,51 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   }, [wallet]);
 
   // ---------------- Jackpot header ----------------
-<div style={{ marginBottom: 24, textAlign: "center" }}>
-  <div style={{ fontSize: 34, fontWeight: 900, color: "#fbbf24", marginBottom: 6 }}>
-    Current Jackpot
-  </div>
-  <div style={{ fontSize: 40, fontWeight: 800, color: "#fbbf24" }}>
-    {jackpotSol.toFixed(4)} SOL
-    <span style={{ fontSize: 22, opacity: 0.9 }}> (~${solPrice > 0 ? jackpotUsd.toFixed(2) : "…"} USD)</span>
-  </div>
+  const jackpot = useJackpotData(); // { jackpotSol }
+  const { moonCountdown, nextMoonDrawDate } = useCountdown();
+  const [solPrice, setSolPrice] = useState(0);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/prices");
+        const data = await res.json();
+        setSolPrice(data.solPriceUsd || 0);
+      } catch {}
+    })();
+  }, []);
+  const jackpotSol = jackpot?.jackpotSol || 0;
+  const jackpotUsd = solPrice > 0 ? jackpotSol * solPrice : 0;
 
-  <div style={{ marginTop: 22, fontSize: 26, fontWeight: 800, color: "#fbbf24" }}>
-    Next Moon Draw
-  </div>
+  // Flip-clock remaining time (for tiled countdown)
+  const [remain, setRemain] = useState({ d: 0, h: 0, m: 0, s: 0 });
+  useEffect(() => {
+    const target = Date.parse(nextMoonDrawDate || "");
+    if (!target || Number.isNaN(target)) return;
+    const tick = () => {
+      const diff = Math.max(0, target - Date.now());
+      const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const m = Math.floor((diff / (1000 * 60)) % 60);
+      const s = Math.floor((diff / 1000) % 60);
+      setRemain({ d, h, m, s });
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [nextMoonDrawDate]);
 
-  {/* Flip-style countdown */}
-  <div style={{ marginTop: 12 }}>
-    <FlipCountdown targetISO={nextMoonDrawISO} />
-  </div>
-
-  {/* Optional exact date line under the clock */}
-  <div style={{ marginTop: 10, fontSize: 14, color: "#fbbf24", opacity: 0.9 }}>
-    {new Date(nextMoonDrawISO).toLocaleString()}
-  </div>
-</div>
+  function FlipTile({ value, label }) {
+    const v = String(value ?? 0).padStart(2, "0");
+    return (
+      <div className="flip-wrap" aria-label={`${label} ${v}`}>
+        <div className="flip-tile">
+          <div className="flip-top">{v}</div>
+          <div className="flip-bottom">{v}</div>
+        </div>
+        <div className="flip-label">{label}</div>
+      </div>
+    );
+  }
 
   // ---------------- Balances ----------------
   const [solBalance, setSolBalance] = useState(0);
@@ -421,23 +339,78 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         paddingTop: "40px",
       }}
     >
-      {/* ------- Jackpot header ------- */}
-      <div style={{ border:"1px solid #333", borderRadius:8, padding:12, marginBottom:16 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", gap:12, flexWrap:"wrap", alignItems:"center" }}>
-          <div style={{ textAlign:"left" }}>
-            <div style={{ fontSize:18, fontWeight:700 }}>Current Jackpot</div>
-            <div style={{ fontSize:16 }}>
-              {jackpotSol.toFixed(4)} SOL
-              {solPrice > 0 && <> (~${jackpotUsd.toFixed(2)} USD)</>}
+      {/* Local styles for jackpot + flip clock */}
+      <style>{`
+        .jackpot-card {
+          border: 1px solid #333; border-radius: 12px; padding: 16px; margin-bottom: 16px;
+          background: rgba(255,255,255,0.02);
+        }
+        .jackpot-grid {
+          display: grid; gap: 16px; align-items: center;
+          grid-template-columns: 1fr;
+        }
+        @media (min-width: 720px) {
+          .jackpot-grid { grid-template-columns: 1.2fr 1fr; }
+        }
+        .jackpot-title { font-size: 28px; font-weight: 800; margin: 0 0 8px; }
+        .jackpot-amount { font-size: 24px; font-weight: 700; }
+        .jackpot-amount small { opacity: .85; font-weight: 600; }
+        .flip-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+        .flip-wrap { text-align: center; }
+        .flip-tile {
+          position: relative; width: 96px; height: 96px;
+          background: #000; border: 2px solid #fbbf24; border-radius: 8px;
+          box-shadow: inset 0 -2px 0 rgba(251,191,36,.3);
+          display: grid; place-items: center; overflow: hidden;
+        }
+        .flip-top, .flip-bottom {
+          font-size: 54px; line-height: 1; font-weight: 800; color: #fbbf24;
+          width: 100%; text-align: center;
+        }
+        .flip-top { position: absolute; top: 0; height: 50%; border-bottom: 1px solid #333; }
+        .flip-bottom { position: absolute; bottom: 0; height: 50%; }
+        .flip-tile::before, .flip-tile::after {
+          content: ""; position: absolute; top: 50%; width: 10px; height: 10px; background: #777;
+          border-radius: 50%; transform: translateY(-50%);
+        }
+        .flip-tile::before { left: -5px; }
+        .flip-tile::after { right: -5px; }
+        .flip-label { margin-top: 6px; font-size: 12px; letter-spacing: .08em; font-weight: 700; opacity: .9; }
+      `}</style>
+
+      {/* ------- Jackpot header (bigger + flip clock) ------- */}
+      <div className="jackpot-card">
+        <div className="jackpot-grid">
+          {/* Left: jackpot figures */}
+          <div>
+            <div className="jackpot-title">Current Jackpot</div>
+            <div className="jackpot-amount">
+              {jackpotSol.toFixed(4)} SOL{" "}
+              {solPrice > 0 && (
+                <small>(~${(jackpotUsd).toFixed(2)} USD)</small>
+              )}
             </div>
-          </div>
-          <div style={{ textAlign:"right" }}>
-            <div style={{ fontSize:16, fontWeight:700 }}>Next Moon Draw</div>
-            <div style={{ fontSize:14 }}>
+
+            <div style={{ marginTop: 18, fontWeight: 800, fontSize: 20 }}>
+              Next Moon Draw
+            </div>
+            <div style={{ marginTop: 4, fontSize: 14 }}>
               <b>Next Draw:</b> {nextMoonDrawDate || "..."}
             </div>
-            <div style={{ fontSize:14 }}>
+            <div style={{ marginTop: 4, fontSize: 14 }}>
               <b>Countdown:</b> {moonCountdown || "..."}
+            </div>
+          </div>
+
+          {/* Right: flip countdown */}
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, textAlign: "center" }}>
+              Countdown
+            </div>
+            <div className="flip-row">
+              <FlipTile value={remain.d} label="DAYS" />
+              <FlipTile value={remain.h} label="HOURS" />
+              <FlipTile value={remain.m} label="MINUTES" />
             </div>
           </div>
         </div>
@@ -732,7 +705,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         <button
           onClick={() => setPastOpen(o => !o)}
           style={{
-            background:"transparent", color:"#fbbf24", border:"1px solid #fbbf24",
+            background:"transparent", color:"#fbbf24", border:"1px solid "#fbbf24"",
             borderRadius:8, padding:"8px 12px", display:"inline-flex", alignItems:"center", gap:8, fontWeight:600, cursor:"pointer"
           }}
         >
