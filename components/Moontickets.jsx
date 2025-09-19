@@ -267,6 +267,13 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
   const totalPages = Math.max(1, Math.ceil(pastTotal / PAGE_SIZE));
 
+  // ---------- Option A constants for "Post on X" ----------
+  const postText = encodeURIComponent(
+    "I got my free weekly Moonticket for this week's jackpot drawing. Get yours at: https://moonticket.io @moonticket__io"
+  );
+  const INTENT_X  = `https://x.com/intent/post?text=${postText}`;
+  const INTENT_TW = `https://twitter.com/intent/tweet?text=${postText}`;
+
   return (
     <div
       style={{
@@ -283,7 +290,15 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap"}}>
           <div style={{fontWeight:600}}>Weekly Free Ticket</div>
           <div style={{display:"flex", gap:8}}>
-            <button style={btnOutline} onClick={openXComposer}>Post on X</button>
+            {/* Replaced button with anchor (Option A) */}
+            <a
+              href={INTENT_X}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ ...btnOutline, display: "inline-block", textDecoration: "none" }}
+            >
+              Post on X
+            </a>
           </div>
         </div>
 
@@ -317,11 +332,11 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
           Claim adds a <b>credit</b>. Use it at checkout on your next ticket.
         </div>
       </div>
-       
+
       {/* Instructions for users */}
       <div style={{ marginBottom: 8, fontSize: 14, color: "#fbbf24", lineHeight: 1.4 }}>
-        Use your available <b>credits</b> to generate tickets. 
-        Then click <b>Quick Pick</b> or <b>Add Ticket</b> to select numbers. 
+        Use your available <b>credits</b> to generate tickets.
+        Then click <b>Quick Pick</b> or <b>Add Ticket</b> to select numbers.
         When ready, click <b>Buy Tickets</b> to enter the drawing.
       </div>
 
@@ -453,7 +468,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
                        • WIN: {t.prize_sol > 0 ? `${t.prize_sol.toFixed(6)} SOL` : `${t.prize_tix.toLocaleString()} TIX`}
                      </div>
                    )}
-                 </li>   
+                 </li>
                   ))}
                 </ul>
 
