@@ -156,31 +156,31 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   }, [nextMoonDrawDate]);
 
   function FlipTile({ value, label }) {
-  const pad2 = (v) => String(v ?? 0).padStart(2, "0");
-  const [display, setDisplay] = useState(pad2(value));
-  const [animate, setAnimate] = useState(false);
+    const pad2 = (v) => String(v ?? 0).padStart(2, "0");
+    const [display, setDisplay] = useState(pad2(value));
+    const [animate, setAnimate] = useState(false);
 
-  useEffect(() => {
-    const next = pad2(value);
-    if (next !== display) {
-      setDisplay(next);
-      setAnimate(true);
-      const t = setTimeout(() => setAnimate(false), 650); // stop animation after flip
-      return () => clearTimeout(t);
-    }
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => {
+      const next = pad2(value);
+      if (next !== display) {
+        setDisplay(next);
+        setAnimate(true);
+        const t = setTimeout(() => setAnimate(false), 650); // stop animation after flip
+        return () => clearTimeout(t);
+      }
+    }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return (
-    <div className="flip-wrap">
-      <div className="flip-tile">
-        <span className={`flip-number ${animate ? "flip-animate" : ""}`}>
-          {display}
-        </span>
+    return (
+      <div className="flip-wrap">
+        <div className="flip-tile">
+          <span className={`flip-number ${animate ? "flip-animate" : ""}`}>
+            {display}
+          </span>
+        </div>
+        <div className="flip-label">{label}</div>
       </div>
-      <div className="flip-label">{label}</div>
-    </div>
-  );
-}
+    );
+  }
 
   // ---------------- Balances ----------------
   const [solBalance, setSolBalance] = useState(0);
@@ -317,45 +317,58 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       : null;
 
   const handleBuy = async () => {
-    if (!wallet || isNaN(parseFloat(solInput))) return;
+    if (isNaN(parseFloat(solInput))) return;
     setLoadingBuy(true);
     setResultBuy(null);
 
     try {
-      const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
-      const userPubkey = new PublicKey(wallet);
+      if (!window?.solana) throw new Error("Phantom not found");
+      // ensure connection (silent first, then interactive)
+      try {
+        await window.solana.connect({ onlyIfTrusted: true }).catch(() => window.solana.connect());
+      } catch {
+        setLoadingBuy(false);
+        return; // user cancelled
+      }
+
+      const phantomPubkey = window.solana.publicKey;
+      if (!phantomPubkey) throw new Error("Wallet not connected");
+      const pkStr = phantomPubkey.toString();
+      if (pkStr !== wallet) setWallet(pkStr); // keep local state in sync
+
+      const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
       const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
       const opsLamports = Math.floor(totalLamports * 0.01);
       const treasuryLamports = totalLamports - opsLamports;
 
-      // user → Treasury + Ops
       const tx = new Transaction().add(
         SystemProgram.transfer({
-          fromPubkey: userPubkey,
+          fromPubkey: phantomPubkey,
           toPubkey: TREASURY_WALLET,
           lamports: treasuryLamports,
         }),
         SystemProgram.transfer({
-          fromPubkey: userPubkey,
+          fromPubkey: phantomPubkey,
           toPubkey: OPS_WALLET,
           lamports: opsLamports,
         })
       );
 
-      const { blockhash } = await connection.getLatestBlockhash();
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
       tx.recentBlockhash = blockhash;
-      tx.feePayer = userPubkey;
+      tx.feePayer = phantomPubkey;
 
       const sigRes = await window.solana.signAndSendTransaction(tx);
-      const sig1 = typeof sigRes === "string" ? sigRes : sigRes.signature;
-      await connection.confirmTransaction({ signature: sig1 }, "confirmed");
+      const sig = typeof sigRes === "string" ? sigRes : sigRes.signature;
+
+      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
 
       // backend sends TIX
       const res2 = await fetch("/api/buyTix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          walletAddress: wallet,
+          walletAddress: pkStr,
           solAmount: parseFloat(solInput),
         }),
       });
@@ -363,15 +376,16 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       if (!data.success) throw new Error(data.error || "TIX transfer failed");
 
       setResultBuy(data);
-      // refresh balance + credits (credits are $-based)
+
+      // refresh balance + credits
       try {
-        const lam = await connection.getBalance(userPubkey);
+        const lam = await connection.getBalance(phantomPubkey);
         setSolBalance(lam / 1e9);
       } catch {}
       await fetchCredits();
     } catch (err) {
       console.error("Buy TIX failed:", err);
-      setResultBuy({ success: false, error: "Failed to buy TIX" });
+      setResultBuy({ success: false, error: err?.message || "Failed to buy TIX" });
     }
 
     setLoadingBuy(false);
