@@ -84,18 +84,21 @@ export default function Home() {
       {/* Buttons */}
       <div className="flex flex-col items-center space-y-6">
         <div className="grid grid-cols-2 gap-6">
+          {/*
           <button onClick={() => window.location.href = "/jackpot"}>
             <img src="/jackpot-button.png" alt="Jackpot" className="w-40 md:w-48 mx-auto block cursor-pointer" />
           </button>
           <button onClick={() => window.location.href = "/buytix"}>
             <img src="/buyTix-button.png" alt="Buy TIX" className="w-40 md:w-48 mx-auto block cursor-pointer" />
           </button>
+          */}
           <Link href="/past">
             <img src="/past-button.png" alt="Winners" className="w-40 md:w-48 mx-auto block cursor-pointer" />
           </Link>
           <Link href="/Moontickets">
             <img src="/moontickets-button.png" alt="NFTs" className="w-40 md:w-48 mx-auto block cursor-pointer" />
           </Link>
+          {/*
           <Link href="/burn">
             <img src="/burn-button.png" alt="Burn to Earn" className="w-40 md:w-48 mx-auto block cursor-pointer" />
           </Link>
@@ -107,6 +110,7 @@ export default function Home() {
         <Link href="/whitepaper">
           <img src="/whitepaper-button.png" alt="Whitepaper" className="w-40 md:w-48 mx-auto block cursor-pointer" />
         </Link>
+        */}
       </div>
     </div>
   );

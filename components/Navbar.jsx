@@ -22,13 +22,17 @@ const Navbar = () => {
         {/* Desktop Nav */}
         <div className="hidden md:flex space-x-6">
           <Link href="/">Home</Link>
+          {/*
           <button onClick={() => window.location.href = "/jackpot"} className="text-yellow-400 hover:test-white">Jackpot</button>
           <button onClick={() => window.location.href = "/buytix"} className="text-yellow-400 hover:test-white">Buy TIX</button>
+          */}
           <Link href="/past">Winners</Link>
           <Link href="/Moontickets">Moontickets</Link>
+          {/*
           <Link href="/burn">Burn to Earn</Link>
           <Link href="/staking">Staking</Link>
           <Link href="/whitepaper">Whitepaper</Link>
+          */}
         </div>
 
         {/* Wallet + Icons + Hamburger */}
@@ -64,13 +68,17 @@ const Navbar = () => {
       {isOpen && (
         <div className="fixed inset-0 top-0 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center justify-center space-y-6 z-40 md:hidden pt-32">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
+          {/*
           <Link href="/jackpot" onClick={() => setIsOpen(false)}>Jackpot</Link>
           <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy $TIX</Link>
+          */}
           <Link href="/past" onClick={() => setIsOpen(false)}>Winners</Link>
           <Link href="/Moontickets" onClick={() => setIsOpen(false)}>Moontickets</Link>
+          {/*
           <Link href="/burn" onClick={() => setIsOpen(false)}>Burn to Earn</Link>
           <Link href="/staking" onClick={() => setIsOpen(false)}>Staking</Link>
           <Link href="/whitepaper" onClick={() => setIsOpen(false)}>Whitepaper</Link>
+          */}
         </div>
       )}
     </>
