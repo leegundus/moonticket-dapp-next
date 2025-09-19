@@ -705,7 +705,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         <button
           onClick={() => setPastOpen(o => !o)}
           style={{
-            background:"transparent", color:"#fbbf24", border:"1px solid "#fbbf24"",
+            background:"transparent", color:"#fbbf24", border:"1px solid "#fbbf24",
             borderRadius:8, padding:"8px 12px", display:"inline-flex", alignItems:"center", gap:8, fontWeight:600, cursor:"pointer"
           }}
         >
