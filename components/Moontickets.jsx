@@ -156,17 +156,31 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   }, [nextMoonDrawDate]);
 
   function FlipTile({ value, label }) {
-    const v = String(value ?? 0).padStart(2, "0");
-    return (
-      <div className="flip-wrap" aria-label={`${label} ${v}`}>
-        <div className="flip-tile">
-          <div className="flip-top">{v}</div>
-          <div className="flip-bottom">{v}</div>
-        </div>
-        <div className="flip-label">{label}</div>
+  const pad2 = (v) => String(v ?? 0).padStart(2, "0");
+  const [display, setDisplay] = useState(pad2(value));
+  const [animate, setAnimate] = useState(false);
+
+  useEffect(() => {
+    const next = pad2(value);
+    if (next !== display) {
+      setDisplay(next);
+      setAnimate(true);
+      const t = setTimeout(() => setAnimate(false), 650); // stop animation after flip
+      return () => clearTimeout(t);
+    }
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="flip-wrap">
+      <div className="flip-tile">
+        <span className={`flip-number ${animate ? "flip-animate" : ""}`}>
+          {display}
+        </span>
       </div>
-    );
-  }
+      <div className="flip-label">{label}</div>
+    </div>
+  );
+}
 
   // ---------------- Balances ----------------
   const [solBalance, setSolBalance] = useState(0);
@@ -450,12 +464,23 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
           box-shadow: inset 0 -2px 0 rgba(251,191,36,.3);
           display: grid; place-items: center; overflow: hidden;
         }
-        .flip-top, .flip-bottom {
-          font-size: 54px; line-height: 1; font-weight: 800; color: #fbbf24;
-          width: 100%; text-align: center;
+        .flip-number {
+        font-size: 54px;
+        font-weight: 800;
+        color: #fbbf24;
+        line-height: 1;
+        display: block;
+        transform-origin: center top;
         }
-        .flip-top { position: absolute; top: 0; height: 50%; border-bottom: 1px solid #333; }
-        .flip-bottom { position: absolute; bottom: 0; height: 50%; }
+        .flip-animate {
+          animation: flip 0.6s ease-in-out;
+        }
+        @keyframes flip {
+          0%   { transform: rotateX(0deg); }
+          45%  { transform: rotateX(90deg); opacity: 0.75; }
+          55%  { transform: rotateX(90deg); opacity: 0.75; }
+          100% { transform: rotateX(0deg); }
+        }
         .flip-tile::before, .flip-tile::after {
           content: ""; position: absolute; top: 50%; width: 10px; height: 10px; background: #777;
           border-radius: 50%; transform: translateY(-50%);
