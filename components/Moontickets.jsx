@@ -55,6 +55,50 @@ async function fetchJSON(url, opts) {
   return data ?? {};
 }
 
+/** Robustly parse strings like "Monday, September 22, 2025 at 10:00 PM CDT" */
+function parseDrawDate(str) {
+  if (!str) return NaN;
+  // Try native first
+  const native = Date.parse(str);
+  if (!Number.isNaN(native)) return native;
+
+  // Fallback: extract Month Day, Year and time + TZ abbr
+  const r =
+    /([A-Za-z]+),?\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM)\s*([A-Z]{2,4})?/.exec(
+      str
+    );
+  if (!r) return NaN;
+
+  const [, , monthName, dayStr, yearStr, hhStr, mmStr, ampm, tzAbbr = "UTC"] = r;
+  const months =
+    "January February March April May June July August September October November December"
+      .split(" ")
+      .reduce((m, v, i) => ((m[v.toLowerCase()] = i), m), {});
+  const month = months[monthName.toLowerCase()];
+  const day = parseInt(dayStr, 10);
+  const year = parseInt(yearStr, 10);
+  let hh = parseInt(hhStr, 10) % 12;
+  if (ampm.toUpperCase() === "PM") hh += 12;
+  const mm = parseInt(mmStr, 10);
+
+  const tzOffsets = {
+    UTC: 0,
+    GMT: 0,
+    EDT: -4,
+    EST: -5,
+    CDT: -5,
+    CST: -6,
+    MDT: -6,
+    MST: -7,
+    PDT: -7,
+    PST: -8,
+  };
+  const offsetHours = tzOffsets[tzAbbr] ?? 0;
+  // Create UTC time from local "timezone" and subtract the offset to get actual UTC epoch
+  const utcMs = Date.UTC(year, month, day, hh - offsetHours, mm, 0, 0);
+  return utcMs;
+}
+
 export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   // ---------------- Wallet glue ----------------
   const [wallet, setWallet] = useState(publicKey?.toString?.() || "");
@@ -92,10 +136,11 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
   const jackpotSol = jackpot?.jackpotSol || 0;
   const jackpotUsd = solPrice > 0 ? jackpotSol * solPrice : 0;
 
-  // Flip-clock remaining time (for tiled countdown)
+  // Flip-clock remaining time
   const [remain, setRemain] = useState({ d: 0, h: 0, m: 0, s: 0 });
   useEffect(() => {
-    const target = Date.parse(nextMoonDrawDate || "");
+    const target =
+      parseDrawDate(nextMoonDrawDate || "") || Date.parse(nextMoonDrawDate || "");
     if (!target || Number.isNaN(target)) return;
     const tick = () => {
       const diff = Math.max(0, target - Date.now());
@@ -397,7 +442,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         .jackpot-title { font-size: 28px; font-weight: 800; margin: 0 0 8px; }
         .jackpot-amount { font-size: 24px; font-weight: 700; }
         .jackpot-amount small { opacity: .85; font-weight: 600; }
-        .flip-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+        .flip-row { display: flex; gap: 14px; justify-content: center; flex-wrap: nowrap; }
         .flip-wrap { text-align: center; }
         .flip-tile {
           position: relative; width: 96px; height: 96px;
@@ -427,22 +472,19 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
           <div>
             <div className="jackpot-title">Current Jackpot</div>
             <div className="jackpot-amount">
-              {jackpotSol.toFixed(4)} SOL{" "}
-              {solPrice > 0 && <small>(~${jackpotUsd.toFixed(2)} USD)</small>}
+              {jackpotSol.toFixed(4)} SOL {solPrice > 0 && <small>(~${jackpotUsd.toFixed(2)} USD)</small>}
             </div>
 
             <div style={{ marginTop: 18, fontWeight: 800, fontSize: 20 }}>Next Moon Draw</div>
             <div style={{ marginTop: 4, fontSize: 14 }}>
               <b>Next Draw:</b> {nextMoonDrawDate || "..."}
             </div>
-            {/* text countdown removed */}
+            {/* countdown text removed */}
           </div>
 
           {/* Right: flip countdown */}
           <div>
-            <div
-              style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, textAlign: "center" }}
-            >
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 8, textAlign: "center" }}>
               Countdown
             </div>
             <div className="flip-row">
@@ -457,15 +499,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
       {/* ------- Weekly free credit ------- */}
       <div style={{ border: "1px solid #333", borderRadius: 8, padding: 12, marginBottom: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div style={{ fontWeight: 600 }}>Weekly Free Ticket</div>
           <div style={{ display: "flex", gap: 8 }}>
             <a
@@ -497,18 +531,9 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
           You’re eligible for <b>one free ticket per drawing</b>.
         </p>
 
-        <div
-          style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}
-        >
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
           <input
-            style={{
-              minWidth: 320,
-              background: "#111",
-              color: "#fff",
-              border: "1px solid #444",
-              borderRadius: 6,
-              padding: "6px 8px",
-            }}
+            style={{ minWidth: 320, background: "#111", color: "#fff", border: "1px solid #444", borderRadius: 6, padding: "6px 8px" }}
             value={tweetUrl}
             onChange={(e) => setTweetUrl(e.target.value)}
             placeholder="Paste tweet URL (required)"
@@ -545,135 +570,103 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         {!wallet ? (
           <div>Connect wallet to buy TIX.</div>
         ) : (
-          <>
-            <p>
-              Live SOL: ${solPriceUsd?.toFixed(2) || "?"} | TIX: $
-              {tixPriceUsd?.toFixed(5) || "?"}
-            </p>
-            <p style={{ opacity: 0.9, marginTop: 4 }}>
-              SOL Balance: {solBalance?.toFixed(4) || "?"} SOL
-            </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
+            <div>
+              <p>
+                Live SOL: ${solPriceUsd?.toFixed(2) || "?"} | TIX: ${tixPriceUsd?.toFixed(5) || "?"}
+              </p>
+              <p style={{ opacity: 0.9, marginTop: 4 }}>SOL Balance: {solBalance?.toFixed(4) || "?"} SOL</p>
 
-            {/* input + action aligned on one row */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginTop: 8,
-                marginBottom: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <label>Enter SOL:</label>
-              <input
-                type="number"
-                value={solInput}
-                onChange={(e) => setSolInput(e.target.value)}
-                placeholder="e.g. 0.05"
+              {/* input + action aligned on one row */}
+              <div
                 style={{
-                  background: "#fff",
-                  color: "#000",
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  width: 120,
-                }}
-              />
-              <button
-                onClick={handleBuy}
-                disabled={loadingBuy || !solInput || Number(solInput) <= 0}
-                style={{
-                  background: "#fbbf24",
-                  color: "#000",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "8px 12px",
-                  fontWeight: 700,
-                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 8,
+                  marginBottom: 8,
+                  flexWrap: "wrap",
                 }}
               >
-                Buy TIX
-              </button>
+                <label>Enter SOL:</label>
+                <input
+                  type="number"
+                  value={solInput}
+                  onChange={(e) => setSolInput(e.target.value)}
+                  placeholder="e.g. 0.05"
+                  style={{ background: "#fff", color: "#000", padding: "6px 8px", borderRadius: 6, width: 120 }}
+                />
+                <button
+                  onClick={handleBuy}
+                  disabled={loadingBuy || !solInput || Number(solInput) <= 0}
+                  style={{
+                    background: "#fbbf24",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Buy TIX
+                </button>
+              </div>
+
+              {wallet && solPriceUsd != null && tixPriceUsd != null && solTyped > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <p>USD est: <strong>${usdPreview.toFixed(2)}</strong></p>
+                  <p>You’ll receive: <strong>{tixPreview.toLocaleString()}</strong> TIX</p>
+                  <p>You’ll get: <strong>{creditsPreview}</strong> ticket credit{creditsPreview === 1 ? "" : "s"}</p>
+                </div>
+              )}
+
+              {resultBuy && resultBuy.success ? (
+                <div style={{ marginBottom: 8, color: "#9FE870" }}>
+                  <p><strong>You’ll receive:</strong> {resultBuy.tixAmount.toLocaleString()} TIX</p>
+                  <p>using {resultBuy.solAmount} SOL (~${resultBuy.usdSpent.toFixed(2)} USD)</p>
+                  <p>Rate: ${resultBuy.tixPriceUsd?.toFixed(5)} | SOL: ${resultBuy.solPriceUsd?.toFixed(2)}</p>
+                  {creditsEarned != null && (
+                    <p className="mt-1">
+                      You received <strong>{creditsEarned}</strong> ticket credit{creditsEarned === 1 ? "" : "s"}.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              {resultBuy && !resultBuy.success && (
+                <div style={{ marginTop: 8, color: "#ff6b6b" }}>
+                  <p>{resultBuy.error || "An error occurred."}</p>
+                </div>
+              )}
             </div>
 
-            {wallet && solPriceUsd != null && tixPriceUsd != null && solTyped > 0 && (
-              <div style={{ marginBottom: 8 }}>
-                <p>
-                  USD est: <strong>${usdPreview.toFixed(2)}</strong>
-                </p>
-                <p>
-                  You’ll receive: <strong>{tixPreview.toLocaleString()}</strong> TIX
-                </p>
-                <p>
-                  You’ll get: <strong>{creditsPreview}</strong> ticket credit
-                  {creditsPreview === 1 ? "" : "s"}
-                </p>
+            {/* Right-side info about credits per 10k TIX */}
+            <div style={{ borderLeft: "1px solid #333", paddingLeft: 12, color: "#e5b400" }}>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Moonticket Credits</div>
+              <div style={{ fontSize: 14, lineHeight: 1.4 }}>
+                For every <b>10,000 TIX</b> purchased you earn <b>1 Moonticket credit</b>.
               </div>
-            )}
-
-            {resultBuy && resultBuy.success ? (
-              <div style={{ marginBottom: 8, color: "#9FE870" }}>
-                <p>
-                  <strong>You’ll receive:</strong> {resultBuy.tixAmount.toLocaleString()} TIX
-                </p>
-                <p>
-                  using {resultBuy.solAmount} SOL (~${resultBuy.usdSpent.toFixed(2)} USD)
-                </p>
-                <p>
-                  Rate: ${resultBuy.tixPriceUsd?.toFixed(5)} | SOL: $
-                  {resultBuy.solPriceUsd?.toFixed(2)}
-                </p>
-                {creditsEarned != null && (
-                  <p className="mt-1">
-                    You received <strong>{creditsEarned}</strong> ticket credit
-                    {creditsEarned === 1 ? "" : "s"}.
-                  </p>
-                )}
-              </div>
-            ) : null}
-
-            {resultBuy && !resultBuy.success && (
-              <div style={{ marginTop: 8, color: "#ff6b6b" }}>
-                <p>{resultBuy.error || "An error occurred."}</p>
-              </div>
-            )}
-          </>
+            </div>
+          </div>
         )}
       </div>
 
       {/* ------- Builder instructions ------- */}
       <div style={{ marginBottom: 8, fontSize: 14, color: "#fbbf24", lineHeight: 1.4 }}>
-        Use your available <b>credits</b> to generate tickets. Then click <b>Quick Pick</b> or{" "}
-        <b>Add Ticket</b> to select numbers. When ready, click <b>Buy Tickets</b> to enter the
-        drawing.
+        Use your available <b>credits</b> to generate tickets. Then click <b>Quick Pick</b> or <b>Add Ticket</b> to select numbers. When ready, click <b>Buy Tickets</b> to enter the drawing.
       </div>
 
       {/* ------- Build tickets ------- */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <button
-          style={{
-            background: "transparent",
-            color: "#fbbf24",
-            border: "1px solid #fbbf24",
-            borderRadius: 8,
-            padding: "6px 10px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
+          style={{ background: "transparent", color: "#fbbf24", border: "1px solid #fbbf24", borderRadius: 8, padding: "6px 10px", fontWeight: 600, cursor: "pointer" }}
           onClick={addQuickPick}
         >
           + Quick Pick
         </button>
         <button
-          style={{
-            background: "transparent",
-            color: "#fbbf24",
-            border: "1px solid #fbbf24",
-            borderRadius: 8,
-            padding: "6px 10px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
+          style={{ background: "transparent", color: "#fbbf24", border: "1px solid #fbbf24", borderRadius: 8, padding: "6px 10px", fontWeight: 600, cursor: "pointer" }}
           onClick={addBlankTicket}
         >
           + Add Ticket
@@ -681,25 +674,12 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       </div>
 
       {cart.map((t, idx) => (
-        <div
-          key={idx}
-          style={{ position: "relative", border: "1px solid #333", borderRadius: 8, padding: 12, marginBottom: 8 }}
-        >
+        <div key={idx} style={{ position: "relative", border: "1px solid #333", borderRadius: 8, padding: 12, marginBottom: 8 }}>
           <button
             aria-label="Remove"
             title="Remove ticket"
             onClick={() => removeTicket(idx)}
-            style={{
-              position: "absolute",
-              top: 6,
-              right: 8,
-              background: "transparent",
-              border: "none",
-              color: "#bbb",
-              fontSize: 18,
-              cursor: "pointer",
-              lineHeight: 1,
-            }}
+            style={{ position: "absolute", top: 6, right: 8, background: "transparent", border: "none", color: "#bbb", fontSize: 18, cursor: "pointer", lineHeight: 1 }}
           >
             ×
           </button>
@@ -708,13 +688,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             {["num1", "num2", "num3", "num4"].map((fieldKey) => (
               <select
                 key={fieldKey}
-                style={{
-                  backgroundColor: "#fff",
-                  color: "#000",
-                  border: "1px solid #444",
-                  borderRadius: 6,
-                  padding: "4px 6px",
-                }}
+                style={{ backgroundColor: "#fff", color: "#000", border: "1px solid #444", borderRadius: 6, padding: "4px 6px" }}
                 value={t[fieldKey]}
                 onChange={(e) => updateTicket(idx, { [fieldKey]: Number(e.target.value) })}
               >
@@ -729,13 +703,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
               <span>Moonball</span>
               <select
-                style={{
-                  backgroundColor: "#fff",
-                  color: "#000",
-                  border: "1px solid #444",
-                  borderRadius: 6,
-                  padding: "4px 6px",
-                }}
+                style={{ backgroundColor: "#fff", color: "#000", border: "1px solid #444", borderRadius: 6, padding: "4px 6px" }}
                 value={t.moonball}
                 onChange={(e) => updateTicket(idx, { moonball: Number(e.target.value) })}
               >
@@ -748,53 +716,30 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             </span>
 
             <button
-              style={{
-                background: "transparent",
-                color: "#fbbf24",
-                border: "1px solid #fbbf24",
-                borderRadius: 8,
-                padding: "6px 10px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
+              style={{ background: "transparent", color: "#fbbf24", border: "1px solid #fbbf24", borderRadius: 8, padding: "6px 10px", fontWeight: 600, cursor: "pointer" }}
               onClick={() => updateTicket(idx, quickPickOne())}
             >
               Quick Pick
             </button>
           </div>
-          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>4 unique 1–25 + Moonball 1–10.</div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+            4 unique 1–25 + Moonball 1–10.
+          </div>
         </div>
       ))}
 
       {/* Totals */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", marginTop: 12 }}>
-        <div>
-          <b>Total tickets:</b> {cart.length}
-        </div>
-        <div>
-          <b>Credits available:</b> {credits}
-        </div>
-        <div>
-          <b>Applying credits:</b> {ticketsToCredit}
-        </div>
+        <div><b>Total tickets:</b> {cart.length}</div>
+        <div><b>Credits available:</b> {credits}</div>
+        <div><b>Applying credits:</b> {ticketsToCredit}</div>
       </div>
 
       {/* Refresh */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginTop: 6, opacity: 0.9 }}>
         <button
-          style={{
-            background: "transparent",
-            color: "#fbbf24",
-            border: "1px solid #fbbf24",
-            borderRadius: 8,
-            padding: "6px 10px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-          onClick={async () => {
-            await fetchCredits();
-            await loadMyTickets();
-          }}
+          style={{ background: "transparent", color: "#fbbf24", border: "1px solid #fbbf24", borderRadius: 8, padding: "6px 10px", fontWeight: 600, cursor: "pointer" }}
+          onClick={async () => { await fetchCredits(); await loadMyTickets(); }}
         >
           Refresh
         </button>
@@ -803,15 +748,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       {/* Submit tickets (entry finalize) */}
       <div style={{ marginTop: 12 }}>
         <button
-          style={{
-            background: "#fbbf24",
-            color: "#000",
-            border: "none",
-            borderRadius: 8,
-            padding: "10px 16px",
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
+          style={{ background: "#fbbf24", color: "#000", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: "pointer" }}
           disabled={loading || !cart.length}
           onClick={async () => {
             const addr = wallet;
@@ -830,8 +767,8 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
                   wallet: addr,
                   tickets: cart,
                   tixCostPerTicket: TIX_PER_TICKET,
-                  useCredits: ticketsToCredit,
-                }),
+                  useCredits: ticketsToCredit
+                })
               });
               if (!prep?.ok) throw new Error(prep?.error || "Failed to prepare");
 
@@ -843,8 +780,8 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
                   signature: null,
                   tickets: cart,
                   expectedTotalBase: 0,
-                  lockedCredits: prep.lockedCredits || 0,
-                }),
+                  lockedCredits: prep.lockedCredits || 0
+                })
               });
               if (!fin?.ok) throw new Error(fin?.error || "Finalize failed");
 
@@ -885,18 +822,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       <div style={{ marginTop: 24, borderTop: "1px solid #333", paddingTop: 16 }}>
         <button
           onClick={() => setPastOpen((o) => !o)}
-          style={{
-            background: "transparent",
-            color: "#fbbf24",
-            border: "1px solid #fbbf24",
-            borderRadius: 8,
-            padding: "8px 12px",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
+          style={{ background: "transparent", color: "#fbbf24", border: "1px solid #fbbf24", borderRadius: 8, padding: "8px 12px", display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600, cursor: "pointer" }}
         >
           {pastOpen ? "▼" : "►"} Last Drawing Tickets
         </button>
@@ -926,15 +852,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
                   <button
-                    style={{
-                      background: "transparent",
-                      color: "#fbbf24",
-                      border: "1px solid #fbbf24",
-                      borderRadius: 8,
-                      padding: "6px 10px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
+                    style={{ background: "transparent", color: "#fbbf24", border: "1px solid #fbbf24", borderRadius: 8, padding: "6px 10px", fontWeight: 600, cursor: "pointer" }}
                     onClick={() => setPastPage((p) => Math.max(1, p - 1))}
                     disabled={pastPage <= 1}
                   >
@@ -942,15 +860,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
                   </button>
                   <span style={{ opacity: 0.9 }}>Page {pastPage} / {totalPages}</span>
                   <button
-                    style={{
-                      background: "transparent",
-                      color: "#fbbf24",
-                      border: "1px solid #fbbf24",
-                      borderRadius: 8,
-                      padding: "6px 10px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
+                    style={{ background: "transparent", color: "#fbbf24", border: "1px solid #fbbf24", borderRadius: 8, padding: "6px 10px", fontWeight: 600, cursor: "pointer" }}
                     onClick={() => setPastPage((p) => Math.min(totalPages, p + 1))}
                     disabled={pastPage >= totalPages}
                   >
