@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
 import useJackpotData from "../hooks/useJackpotData";
 import useCountdown from "../hooks/useCountdown";
+import CheckInButton from "./CheckInButton"; // ⬅️ added
 
 const range = (n, start = 1) => Array.from({ length: n }, (_, i) => i + start);
 const MAIN_POOL = range(25, 1);
@@ -202,6 +203,26 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       cancelled = true;
       clearInterval(id);
     };
+  }, [wallet]);
+
+  // ---------------- Daily Check-In (added) ----------------
+  const [streak, setStreak] = useState(0);
+  const [lastCheckin, setLastCheckin] = useState(null);
+
+  useEffect(() => {
+    // same API used by Jackpot component
+    const fetchCheckinStatus = async () => {
+      if (!wallet) return;
+      try {
+        const res = await fetch(`/api/checkinStatus?wallet=${wallet}`);
+        const data = await res.json();
+        setStreak(data.streak || 0);
+        setLastCheckin(data.lastCheckin ? new Date(data.lastCheckin) : null);
+      } catch (err) {
+        console.error("Failed to fetch check-in status:", err);
+      }
+    };
+    fetchCheckinStatus();
   }, [wallet]);
 
   // ---------------- Ticket builder ----------------
@@ -533,6 +554,19 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
               <FlipTile value={remain.s} label="SECONDS" />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ------- Daily Check-In (added) ------- */}
+      <div style={{ border: "1px solid #333", borderRadius: 8, padding: 12, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 700 }}>Daily Check-In</div>
+          <div style={{ fontSize: 14, opacity: 0.9 }}>
+            Streak: <b>{streak}</b>{lastCheckin ? ` (last: ${lastCheckin.toLocaleDateString()})` : ""}
+          </div>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <CheckInButton streak={streak} lastCheckin={lastCheckin} />
         </div>
       </div>
 
