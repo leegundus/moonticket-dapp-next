@@ -1,252 +1,193 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 
-// canonical tier ordering + labels used for display
-const TIER_ORDER = [
-  "jackpot",
-  "four",
-  "three_mb",
-  "three",
-  "two_mb",
-  "one_mb",
-  "zero_mb",
-];
-const TIER_LABELS = {
-  jackpot: "Jackpot",
-  four: "4",
-  three_mb: "3+MB",
-  three: "3",
-  two_mb: "2+MB",
-  one_mb: "1+MB",
-  zero_mb: "0+MB",
-};
-
-// normalize various API shapes into one structure:
-// [{ code, label, winners: [{wallet, prize_sol, prize_tix}], totals }]
-function normalizeTierData(draw) {
-  const tiers = [];
-
-  // case A: flat winners array
-  if (Array.isArray(draw?.winners)) {
-    const grouped = draw.winners.reduce((m, w) => {
-      const code = mapTierCode(w.tier);
-      if (!code) return m;
-      (m[code] = m[code] || []).push(w);
-      return m;
-    }, {});
-    for (const code of TIER_ORDER) {
-      const arr = grouped[code] || [];
-      tiers.push({
-        code,
-        label: TIER_LABELS[code],
-        winners: arr.map((w) => ({
-          wallet: w.wallet || w.address || w.addr || "",
-          prize_sol: numOrNull(w.prize_sol),
-          prize_tix: intOrNull(w.prize_tix),
-        })),
-      });
-    }
-    return tiers;
-  }
-
-  // case B: object keyed by tier → array of winners
-  const keyed =
-    draw?.tierWinners || draw?.tier_winners || draw?.tiers || null;
-  if (keyed && typeof keyed === "object") {
-    for (const code of TIER_ORDER) {
-      const arr = keyed[code] || [];
-      const list = Array.isArray(arr) ? arr : [];
-      tiers.push({
-        code,
-        label: TIER_LABELS[code],
-        winners: list.map((w) => ({
-          wallet: w.wallet || w.address || w.addr || "",
-          prize_sol: numOrNull(w.prize_sol),
-          prize_tix: intOrNull(w.prize_tix),
-        })),
-      });
-    }
-    return tiers;
-  }
-
-  // nothing detailed
-  return null;
-}
-
-function mapTierCode(raw) {
-  if (!raw) return null;
-  const s = String(raw).toLowerCase().replace(/\s+/g, "");
-  if (["jackpot", "jp"].includes(s)) return "jackpot";
-  if (["4", "four"].includes(s)) return "four";
-  if (["3+mb", "3mb", "three_mb", "three+mb"].includes(s)) return "three_mb";
-  if (["3", "three"].includes(s)) return "three";
-  if (["2+mb", "2mb", "two_mb", "two+mb"].includes(s)) return "two_mb";
-  if (["1+mb", "1mb", "one_mb", "one+mb"].includes(s)) return "one_mb";
-  if (["0+mb", "0mb", "zero_mb", "zero+mb"].includes(s)) return "zero_mb";
-  return null;
-}
-
-function numOrNull(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-function intOrNull(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : null;
-}
-
-function WinningNumbers({ draw }) {
-  const wn = draw?.winning_numbers || draw?.winningNumbers;
-  if (!wn) return null;
-  const nums = [wn.num1, wn.num2, wn.num3, wn.num4].filter((n) => n != null).sort((a, b) => a - b);
-  const mb = wn.moonball ?? wn.mb ?? null;
-  if (!nums.length && mb == null) return null;
-
+// --- Helper: render winning numbers using your images ---
+function WinningNumbers({ nums = [], moonball = null, size = 56 }) {
+  const ordered = Array.isArray(nums) ? [...nums].sort((a, b) => a - b) : [];
+  const ball = { width: size, height: size, objectFit: "contain" };
   return (
-    <div className="mt-2 text-sm">
-      <span className="opacity-80">Winning Numbers:&nbsp;</span>
-      <span className="font-semibold">
-        {nums.join(" - ")}
-        {mb != null ? `  |  MB ${mb}` : ""}
-      </span>
+    <div className="flex items-center gap-2 flex-wrap">
+      {ordered.map((n, i) => (
+        <img key={`n${i}`} src={`/numbers/yellow/${n}.png`} alt={`${n}`} style={ball} />
+      ))}
+      {moonball != null && (
+        <img src={`/numbers/green/${moonball}.png`} alt={`MB ${moonball}`} style={{ ...ball, marginLeft: 6 }} />
+      )}
     </div>
   );
 }
 
+// Tiers to display (order + labels)
+const TIERS = [
+  { key: "jackpot", label: "Jackpot", rule: "4 numbers + Moonball" },
+  { key: "4",       label: "4",        rule: "4 numbers" },
+  { key: "3+MB",    label: "3+MB",     rule: "3 numbers + Moonball" },
+  { key: "3",       label: "3",        rule: "3 numbers" },
+  { key: "2+MB",    label: "2+MB",     rule: "2 numbers + Moonball" },
+  { key: "1+MB",    label: "1+MB",     rule: "1 number + Moonball" },
+  { key: "0+MB",    label: "0+MB",     rule: "Moonball only" },
+];
+
+// Defensive readers for API shapes
+function readTierCount(draw, key) {
+  const v1 = draw?.tierCounts?.[key] ?? draw?.winners_by_tier?.[key];
+  if (typeof v1 === "number") return v1;
+
+  if (Array.isArray(draw?.tiers)) {
+    const f = draw.tiers.find((t) => t.key === key || t.tier === key || t.name === key);
+    if (f && typeof f.count === "number") return f.count;
+  }
+
+  const normalized = key.replace("+", "_plus_").replace("MB", "mb");
+  const v2 =
+    draw?.[key] ??
+    draw?.[`count_${key}`] ??
+    draw?.[`winners_${key}`] ??
+    draw?.[`count_${normalized}`] ??
+    draw?.[`winners_${normalized}`];
+  return typeof v2 === "number" ? v2 : 0;
+}
+
+function readWinningNums(draw) {
+  const wn = draw?.winning_numbers || draw?.winningNumbers || {};
+  const nums =
+    wn.nums ||
+    wn.main ||
+    [wn.n1, wn.n2, wn.n3, wn.n4].filter((x) => typeof x === "number") ||
+    [draw.n1, draw.n2, draw.n3, draw.n4].filter((x) => typeof x === "number");
+  const moonball = wn.moonball ?? draw.moonball ?? wn.mb ?? draw.mb;
+  return { nums: Array.isArray(nums) ? nums : [], moonball };
+}
+
 export default function PastDrawings() {
   const [draws, setDraws] = useState([]);
+  const [i, setI] = useState(0); // current index (0 = most recent)
 
   useEffect(() => {
-    const fetchDraws = async () => {
+    (async () => {
       try {
         const res = await fetch("/api/pastDraws");
         const data = await res.json();
-        setDraws(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : data?.items || [];
+        // newest first; fall back if API returns oldest first
+        const sorted =
+          list.length && new Date(list[0]?.draw_date) < new Date(list[list.length - 1]?.draw_date)
+            ? [...list].reverse()
+            : list;
+        setDraws(sorted);
+        setI(0);
       } catch {
         setDraws([]);
       }
-    };
-    fetchDraws();
+    })();
   }, []);
+
+  // keyboard arrow nav
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowLeft") setI((x) => Math.max(0, x - 1));
+      if (e.key === "ArrowRight") setI((x) => Math.min(draws.length - 1, x + 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [draws.length]);
+
+  const draw = useMemo(() => (draws.length ? draws[i] : null), [draws, i]);
+  const { nums, moonball } = readWinningNums(draw || {});
+  const jackpotSol = Number(draw?.jackpot_sol || draw?.jackpotSol || 0);
+  const dt = draw?.draw_date ? new Date(draw.draw_date) : null;
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-yellow-400 overflow-x-hidden">
-      <main className="flex-grow px-6 pt-40">
+      <main className="flex-grow px-4 sm:px-6 pt-40 max-w-4xl mx-auto w-full">
         <h1 className="text-2xl font-bold mb-4">Past Drawings</h1>
 
-        {draws.length === 0 ? (
+        {!draw ? (
           <p>No draws yet.</p>
         ) : (
-          <ul className="space-y-6">
-            {draws.map((draw) => {
-              const tiers = normalizeTierData(draw);
-              const jackpotPaid = numOrNull(draw?.jackpot_sol);
+          <div className="border border-yellow-600 rounded p-4">
+            {/* Header: date + pager */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div className="font-semibold">Date</div>
+                <div>{dt ? dt.toLocaleString() : "—"}</div>
+              </div>
 
-              return (
-                <li
-                  key={draw.id || draw.draw_id || draw.tx_signature}
-                  className="border p-4 border-yellow-600/70 rounded max-w-full overflow-hidden"
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setI((x) => Math.max(0, x - 1))}
+                  disabled={i <= 0}
+                  className="px-3 py-1 border border-yellow-500 rounded disabled:opacity-40"
                 >
-                  <div className="flex flex-col gap-1">
-                    <div>
-                      <strong>Date:</strong>{" "}
-                      {draw?.draw_date ? new Date(draw.draw_date).toLocaleString() : "—"}
-                    </div>
+                  ◀
+                </button>
+                <div className="text-sm opacity-80">
+                  {i + 1} / {draws.length}
+                </div>
+                <button
+                  onClick={() => setI((x) => Math.min(draws.length - 1, x + 1))}
+                  disabled={i >= draws.length - 1}
+                  className="px-3 py-1 border border-yellow-500 rounded disabled:opacity-40"
+                >
+                  ▶
+                </button>
+              </div>
+            </div>
 
-                    {typeof jackpotPaid === "number" && (
-                      <div>
-                        <strong>Jackpot (SOL):</strong>{" "}
-                        {jackpotPaid.toFixed(4)}
-                      </div>
-                    )}
+            {/* Jackpot */}
+            <div className="mt-3">
+              <div className="font-semibold">Jackpot (SOL)</div>
+              <div>{jackpotSol.toFixed(4)}</div>
+            </div>
 
-                    {typeof draw?.entries === "number" && (
-                      <div>
-                        <strong>Entries:</strong> {draw.entries.toLocaleString()}
-                      </div>
-                    )}
+            {/* Winning numbers */}
+            <div className="mt-4">
+              <div className="text-sm opacity-85 mb-1 font-semibold">Winning Numbers</div>
+              <WinningNumbers nums={nums} moonball={moonball} />
+            </div>
 
-                    <WinningNumbers draw={draw} />
+            {/* Tier breakdown */}
+            <div className="mt-5 overflow-hidden rounded border border-yellow-300/30">
+              <table className="w-full text-sm">
+                <thead className="bg-yellow-300/10">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Tier</th>
+                    <th className="px-3 py-2 text-left">Match Requirement</th>
+                    <th className="px-3 py-2 text-right">Winners</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-yellow-300/10">
+                  {TIERS.map((t) => (
+                    <tr key={t.key} className="hover:bg-yellow-300/5">
+                      <td className="px-3 py-2 font-semibold">{t.label}</td>
+                      <td className="px-3 py-2">{t.rule}</td>
+                      <td className="px-3 py-2 text-right">{readTierCount(draw, t.key)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-                    {draw?.tx_signature && (
-                      <div className="truncate">
-                        <strong>Transaction:</strong>{" "}
-                        <a
-                          href={`https://solscan.io/tx/${draw.tx_signature}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline text-blue-400 break-all"
-                        >
-                          View on Solscan
-                        </a>
-                      </div>
-                    )}
-                  </div>
+            {/* Optional: jackpot winner address if provided */}
+            <div className="mt-4">
+              <div className="font-semibold">Winner</div>
+              <div className="break-all">
+                {draw.rolled_over ? "None (Rolled Over)" : draw.winner || "—"}
+              </div>
+            </div>
 
-                  {/* Tiered winners */}
-                  {tiers ? (
-                    <div className="mt-4 overflow-hidden rounded border border-yellow-400/30">
-                      <table className="w-full text-sm">
-                        <thead className="bg-yellow-300/10">
-                          <tr>
-                            <th className="px-3 py-2 text-left">Tier</th>
-                            <th className="px-3 py-2 text-left">Winners</th>
-                            <th className="px-3 py-2 text-right">Prize</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-yellow-300/10">
-                          {tiers.map((t) => (
-                            <tr key={t.code} className="align-top">
-                              <td className="px-3 py-2 font-semibold whitespace-nowrap">
-                                {TIER_LABELS[t.code] || t.code}
-                              </td>
-                              <td className="px-3 py-2">
-                                {!t.winners?.length ? (
-                                  <span className="opacity-70">—</span>
-                                ) : (
-                                  <ul className="space-y-1">
-                                    {t.winners.map((w, i) => (
-                                      <li key={i} className="break-all">
-                                        {w.wallet || "—"}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-right whitespace-nowrap">
-                                {!t.winners?.length ? (
-                                  <span className="opacity-70">—</span>
-                                ) : (
-                                  <ul className="space-y-1">
-                                    {t.winners.map((w, i) => (
-                                      <li key={i}>
-                                        {typeof w.prize_sol === "number"
-                                          ? `${w.prize_sol.toFixed(6)} SOL`
-                                          : typeof w.prize_tix === "number"
-                                          ? `${w.prize_tix.toLocaleString()} TIX`
-                                          : "—"}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    // Fallback if API doesn't include per-tier detail
-                    <div className="mt-3">
-                      <p className="break-all">
-                        <strong>Winner:</strong>{" "}
-                        {draw.rolled_over ? "None (Rolled Over)" : draw.winner || "—"}
-                      </p>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+            {draw.tx_signature && (
+              <div className="mt-2">
+                <a
+                  href={`https://solscan.io/tx/${draw.tx_signature}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-400 break-all"
+                >
+                  View transaction on Solscan
+                </a>
+              </div>
+            )}
+          </div>
         )}
       </main>
     </div>
