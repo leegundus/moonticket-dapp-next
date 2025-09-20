@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 
-// --- Helper: render winning numbers using your images ---
+/* ---------- Winning numbers (image chips) ---------- */
 function WinningNumbers({ nums = [], moonball = null, size = 56 }) {
   const ordered = Array.isArray(nums) ? [...nums].sort((a, b) => a - b) : [];
   const ball = { width: size, height: size, objectFit: "contain" };
@@ -16,27 +16,78 @@ function WinningNumbers({ nums = [], moonball = null, size = 56 }) {
   );
 }
 
-// Tiers to display (order + labels)
+/* ---------- Display tiers ---------- */
 const TIERS = [
   { key: "jackpot", label: "Jackpot", rule: "4 numbers + Moonball" },
-  { key: "4",       label: "4",        rule: "4 numbers" },
-  { key: "3+MB",    label: "3+MB",     rule: "3 numbers + Moonball" },
-  { key: "3",       label: "3",        rule: "3 numbers" },
-  { key: "2+MB",    label: "2+MB",     rule: "2 numbers + Moonball" },
-  { key: "1+MB",    label: "1+MB",     rule: "1 number + Moonball" },
-  { key: "0+MB",    label: "0+MB",     rule: "Moonball only" },
+  { key: "4",       label: "4",       rule: "4 numbers" },
+  { key: "3+MB",    label: "3+MB",    rule: "3 numbers + Moonball" },
+  { key: "3",       label: "3",       rule: "3 numbers" },
+  { key: "2+MB",    label: "2+MB",    rule: "2 numbers + Moonball" },
+  { key: "1+MB",    label: "1+MB",    rule: "1 number + Moonball" },
+  { key: "0+MB",    label: "0+MB",    rule: "Moonball only" },
 ];
 
-// Defensive readers for API shapes
-function readTierCount(draw, key) {
+/* ---------- Helpers to read/compute counts ---------- */
+
+/** Map a single award row to our display tier key. */
+function awardToTierKey(a = {}) {
+  // Normalize fields that may come back in different shapes
+  const tier = (a.tier || "").toUpperCase();
+  const matches = Number(a.matches ?? a.match_count ?? a.num_matches ?? 0);
+  const mb = Boolean(a.moonball_mat ?? a.moonball ?? a.mb ?? false);
+
+  // If the backend already labeled it "JACKPOT", trust that.
+  if (tier === "JACKPOT") return "jackpot";
+
+  // Otherwise derive from matches + moonball flag
+  if (matches === 4 && mb) return "jackpot";
+  if (matches === 4 && !mb) return "4";
+  if (matches === 3 && mb) return "3+MB";
+  if (matches === 3 && !mb) return "3";
+  if (matches === 2 && mb) return "2+MB";
+  if (matches === 1 && mb) return "1+MB";
+  if (matches === 0 && mb) return "0+MB";
+
+  // Unknown/unsupported patterns contribute to no displayed tier
+  return null;
+}
+
+/** Build counts object from an array of award rows. */
+function countsFromAwards(awards = []) {
+  const out = { jackpot: 0, "4": 0, "3+MB": 0, "3": 0, "2+MB": 0, "1+MB": 0, "0+MB": 0 };
+  for (const a of Array.isArray(awards) ? awards : []) {
+    const key = awardToTierKey(a);
+    if (key && key in out) out[key] += 1;
+  }
+  return out;
+}
+
+/** Gather winning numbers from various shapes. */
+function readWinningNums(draw) {
+  const wn = draw?.winning_numbers || draw?.winningNumbers || {};
+  const nums =
+    wn.nums ||
+    wn.main ||
+    [wn.n1, wn.n2, wn.n3, wn.n4].filter((x) => typeof x === "number") ||
+    [draw.win_num1, draw.win_num2, draw.win_num3, draw.win_num4].filter((x) => typeof x === "number") ||
+    [draw.n1, draw.n2, draw.n3, draw.n4].filter((x) => typeof x === "number");
+  const moonball = wn.moonball ?? draw.win_moonball ?? wn.mb ?? draw.moonball ?? draw.mb;
+  return { nums: Array.isArray(nums) ? nums : [], moonball };
+}
+
+/** Read a tier count with graceful fallbacks (API may already aggregate). */
+function readTierCount(draw, key, computedCounts) {
+  // 1) If API provided a tierCounts object, prefer it
   const v1 = draw?.tierCounts?.[key] ?? draw?.winners_by_tier?.[key];
   if (typeof v1 === "number") return v1;
 
+  // 2) Some APIs send an array like [{tier:"3+MB", count:2}, ...]
   if (Array.isArray(draw?.tiers)) {
     const f = draw.tiers.find((t) => t.key === key || t.tier === key || t.name === key);
     if (f && typeof f.count === "number") return f.count;
   }
 
+  // 3) Direct properties with different naming
   const normalized = key.replace("+", "_plus_").replace("MB", "mb");
   const v2 =
     draw?.[key] ??
@@ -44,94 +95,39 @@ function readTierCount(draw, key) {
     draw?.[`winners_${key}`] ??
     draw?.[`count_${normalized}`] ??
     draw?.[`winners_${normalized}`];
-  return typeof v2 === "number" ? v2 : 0;
+  if (typeof v2 === "number") return v2;
+
+  // 4) Client-side computed from prize awards
+  return computedCounts?.[key] ?? 0;
 }
 
-function readWinningNums(draw) {
-  // Prefer normalized object from API
-  if (draw?.winning_numbers) {
-    const wn = draw.winning_numbers;
-    return {
-      nums: Array.isArray(wn.nums) ? wn.nums : [],
-      moonball: wn.moonball ?? null,
-    };
-  }
-
-  // Fallbacks: handle DB-style columns (win_num1..4, win_moonball) and older shapes
-  const nums =
-    [draw?.win_num1, draw?.win_num2, draw?.win_num3, draw?.win_num4].filter(
-      (x) => typeof x === "number"
-    ) ||
-    [draw?.n1, draw?.n2, draw?.n3, draw?.n4].filter((x) => typeof x === "number") ||
-    [];
-
-  const moonball =
-    typeof draw?.win_moonball === "number"
-      ? draw.win_moonball
-      : draw?.moonball ?? draw?.mb ?? null;
-
-  return { nums, moonball };
-}
-
-// Normalize any response shape into an array of draws
-function normalizeDrawList(data) {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.items)) return data.items;
-  if (Array.isArray(data.data)) return data.data;
-  if (Array.isArray(data.draws)) return data.draws;
-  if (Array.isArray(data.results)) return data.results;
-  // Sometimes API wraps success:
-  if (typeof data === "object") {
-    for (const k of Object.keys(data)) {
-      if (Array.isArray(data[k])) return data[k];
-    }
-  }
-  return [];
-}
-
+/* ---------- Page ---------- */
 export default function PastDrawings() {
   const [draws, setDraws] = useState([]);
-  const [i, setI] = useState(0); // current index (0 = most recent)
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+  const [i, setI] = useState(0); // 0 = most recent
 
   useEffect(() => {
     (async () => {
-      setLoading(true);
-      setErr("");
       try {
-        // Primary request
-        let res = await fetch("/api/pastDraws");
-        let data = await res.json().catch(() => ({}));
-        let list = normalizeDrawList(data);
+        const res = await fetch("/api/pastDraws");
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data?.items || [];
 
-        // If still empty, try with a generous limit as a fallback
-        if (!list.length) {
-          res = await fetch("/api/pastDraws?limit=100");
-          data = await res.json().catch(() => ({}));
-          list = normalizeDrawList(data);
-        }
-
-        // newest first
-        const sorted = [...list].sort((a, b) => {
-          const da = new Date(a?.draw_date || a?.date || 0).getTime();
-          const db = new Date(b?.draw_date || b?.date || 0).getTime();
-          return db - da;
-        });
+        // Sort newest → oldest if needed
+        const sorted =
+          list.length && new Date(list[0]?.draw_date) < new Date(list[list.length - 1]?.draw_date)
+            ? [...list].reverse()
+            : list;
 
         setDraws(sorted);
         setI(0);
-      } catch (e) {
-        setErr("Failed to load past draws.");
+      } catch {
         setDraws([]);
-      } finally {
-        setLoading(false);
       }
     })();
   }, []);
 
-  // keyboard arrow nav
+  // keyboard arrows to navigate between draws
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "ArrowLeft") setI((x) => Math.max(0, x - 1));
@@ -144,22 +140,24 @@ export default function PastDrawings() {
   const draw = useMemo(() => (draws.length ? draws[i] : null), [draws, i]);
   const { nums, moonball } = readWinningNums(draw || {});
   const jackpotSol = Number(draw?.jackpot_sol || draw?.jackpotSol || 0);
-  const dt = draw?.draw_date ? new Date(draw.draw_date) : draw?.date ? new Date(draw.date) : null;
+  const dt = draw?.draw_date ? new Date(draw.draw_date) : null;
+
+  // Pull awards array from any likely property name
+  const awards = useMemo(
+    () => draw?.awards || draw?.prize_awards || draw?.winners || [],
+    [draw]
+  );
+  const computedCounts = useMemo(() => countsFromAwards(awards), [awards]);
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-yellow-400 overflow-x-hidden">
       <main className="flex-grow px-4 sm:px-6 pt-40 max-w-4xl mx-auto w-full">
         <h1 className="text-2xl font-bold mb-4">Past Drawings</h1>
 
-        {loading ? (
-          <p>Loading…</p>
-        ) : !draw ? (
+        {!draw ? (
           <div>
             <p>No draws yet.</p>
-            {err ? <p className="text-yellow-300/80 text-sm mt-2">{err}</p> : null}
-            {!err && draws && Array.isArray(draws) && draws.length === 0 ? (
-              <p className="text-yellow-300/60 text-xs mt-1">API returned an empty list.</p>
-            ) : null}
+            <p className="opacity-70 text-sm mt-1">API returned an empty list.</p>
           </div>
         ) : (
           <div className="border border-yellow-600 rounded p-4">
@@ -218,7 +216,9 @@ export default function PastDrawings() {
                     <tr key={t.key} className="hover:bg-yellow-300/5">
                       <td className="px-3 py-2 font-semibold">{t.label}</td>
                       <td className="px-3 py-2">{t.rule}</td>
-                      <td className="px-3 py-2 text-right">{readTierCount(draw, t.key)}</td>
+                      <td className="px-3 py-2 text-right">
+                        {readTierCount(draw, t.key, computedCounts)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -229,11 +229,11 @@ export default function PastDrawings() {
             <div className="mt-4">
               <div className="font-semibold">Winner</div>
               <div className="break-all">
-                {draw.rolled_over ? "None (Rolled Over)" : draw.winner || "—"}
+                {draw?.rolled_over ? "None (Rolled Over)" : draw?.winner || "—"}
               </div>
             </div>
 
-            {draw.tx_signature && (
+            {draw?.tx_signature && (
               <div className="mt-2">
                 <a
                   href={`https://solscan.io/tx/${draw.tx_signature}`}
