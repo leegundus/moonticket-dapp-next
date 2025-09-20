@@ -77,7 +77,6 @@ export default function Home() {
           </table>
         </div>
         <p className="mt-2 text-xs text-yellow-200/80 text-center">
-          “MB” = Moonball. Jackpot is paid in SOL based on 80% of the treasury at draw time.
         </p>
       </div>
 

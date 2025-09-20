@@ -26,6 +26,17 @@ const TIERS = [
   { key: "0+MB",    label: "0+MB",    rule: "Moonball only" },
 ];
 
+// Prize labels per tier
+const PRIZES = {
+  jackpot: "Jackpot (SOL)",
+  "4": "250,000 TIX",
+  "3+MB": "100,000 TIX",
+  "3": "50,000 TIX",
+  "2+MB": "20,000 TIX",
+  "1+MB": "15,000 TIX",
+  "0+MB": "10,000 TIX",
+};
+
 // read tier count defensively from the API shape
 function readTierCount(draw, key) {
   const v1 = draw?.tierCounts?.[key] ?? draw?.winners_by_tier?.[key];
@@ -102,9 +113,6 @@ export default function PastDrawings() {
   const dt = draw?.draw_date ? new Date(draw.draw_date) : null;
 
   const jackpotWinners = Array.isArray(draw?.jackpot_winners) ? draw.jackpot_winners : null;
-  const jackpotCount = readTierCount(draw || {}, "jackpot");
-  const paidPool = jackpotSol * 0.8;
-  const eachWin = jackpotCount > 0 ? paidPool / jackpotCount : 0;
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-yellow-400 overflow-x-hidden">
@@ -147,14 +155,6 @@ export default function PastDrawings() {
             <div className="mt-3">
               <div className="font-semibold">Jackpot (SOL)</div>
               <div>{jackpotSol.toFixed(4)}</div>
-              <div className="text-sm opacity-85 mt-1">
-                Paid pool (80%): <b>{paidPool.toFixed(6)} SOL</b>
-                {" · "}
-                Winners: <b>{jackpotCount}</b>
-                {jackpotCount > 0 && (
-                  <>{" · "}~<b>{eachWin.toFixed(6)} SOL</b> each</>
-                )}
-              </div>
             </div>
 
             {/* Winning numbers */}
@@ -170,6 +170,7 @@ export default function PastDrawings() {
                   <tr>
                     <th className="px-3 py-2 text-left">Tier</th>
                     <th className="px-3 py-2 text-left">Match Requirement</th>
+                    <th className="px-3 py-2 text-left">Prize</th>
                     <th className="px-3 py-2 text-right">Winners</th>
                   </tr>
                 </thead>
@@ -178,6 +179,7 @@ export default function PastDrawings() {
                     <tr key={t.key} className="hover:bg-yellow-300/5">
                       <td className="px-3 py-2 font-semibold">{t.label}</td>
                       <td className="px-3 py-2">{t.rule}</td>
+                      <td className="px-3 py-2">{PRIZES[t.key]}</td>
                       <td className="px-3 py-2 text-right">{readTierCount(draw, t.key)}</td>
                     </tr>
                   ))}
