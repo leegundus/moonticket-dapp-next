@@ -48,14 +48,29 @@ function readTierCount(draw, key) {
 }
 
 function readWinningNums(draw) {
-  const wn = draw?.winning_numbers || draw?.winningNumbers || {};
+  // Prefer normalized object from API
+  if (draw?.winning_numbers) {
+    const wn = draw.winning_numbers;
+    return {
+      nums: Array.isArray(wn.nums) ? wn.nums : [],
+      moonball: wn.moonball ?? null,
+    };
+  }
+
+  // Fallbacks: handle DB-style columns (win_num1..4, win_moonball) and older shapes
   const nums =
-    wn.nums ||
-    wn.main ||
-    [wn.n1, wn.n2, wn.n3, wn.n4].filter((x) => typeof x === "number") ||
-    [draw.n1, draw.n2, draw.n3, draw.n4].filter((x) => typeof x === "number");
-  const moonball = wn.moonball ?? draw.moonball ?? wn.mb ?? draw.mb;
-  return { nums: Array.isArray(nums) ? nums : [], moonball };
+    [draw?.win_num1, draw?.win_num2, draw?.win_num3, draw?.win_num4].filter(
+      (x) => typeof x === "number"
+    ) ||
+    [draw?.n1, draw?.n2, draw?.n3, draw?.n4].filter((x) => typeof x === "number") ||
+    [];
+
+  const moonball =
+    typeof draw?.win_moonball === "number"
+      ? draw.win_moonball
+      : draw?.moonball ?? draw?.mb ?? null;
+
+  return { nums, moonball };
 }
 
 export default function PastDrawings() {
