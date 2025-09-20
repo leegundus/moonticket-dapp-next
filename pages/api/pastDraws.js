@@ -14,31 +14,23 @@ function normalizeTier(tierRaw) {
   if (!tierRaw) return null;
   const t = String(tierRaw).trim();
 
-  // Fast path for exact matches
-  if (CANON_TIERS.includes(t)) return t;
-
-  // Case-insensitive handling (e.g. "JACKPOT" -> "jackpot")
+  if (CANON_TIERS.includes(t)) return t;      // exact match (e.g., "3+MB")
   const upper = t.toUpperCase();
+  if (upper === "JACKPOT") return "jackpot";  // "JACKPOT" → "jackpot"
 
-  if (upper === "JACKPOT") return "jackpot";
-
-  // Normalize variants like "3 + MB", "3+mb", "3 +mb", etc.
+  // Variants like "3 + MB", "3+mb", " 3 +mb "
   const compact = upper.replace(/\s+/g, "");
-  const plusMbMatch = compact.match(/^([0-4])\+MB$/); // "0+MB" ... "4+MB"
+  const plusMbMatch = compact.match(/^([0-4])\+MB$/);
   if (plusMbMatch) {
     const n = plusMbMatch[1];
-    if (n === "0") return "0+MB";
-    if (n === "1") return "1+MB";
-    if (n === "2") return "2+MB";
-    if (n === "3") return "3+MB";
     if (n === "4") return "jackpot"; // treat 4+MB as Jackpot
+    return `${n}+MB`;
   }
 
-  // Pure number tiers like "4" or "3"
+  // Pure numeric tiers like "4" or "3"
   if (/^[0-4]$/.test(t)) return t;
 
-  // Unknown label — ignore it
-  return null;
+  return null; // unknown label
 }
 
 export default async function handler(req, res) {
@@ -71,36 +63,48 @@ export default async function handler(req, res) {
       console.error("pastDraws: drawsErr", drawsErr);
       return res.status(500).json({ error: "Failed to load draws" });
     }
-
     if (!draws || !draws.length) {
       return res.status(200).json({ items: [] });
     }
 
-    // 2) Fetch prize_awards for those draws
+    // 2) Fetch prize_awards for those draws (include wallet + tx_sig so we can list jackpot winners)
     const drawIds = draws.map((d) => d.id);
     const { data: awards, error: awardsErr } = await supabase
       .from("prize_awards")
-      .select("draw_id,tier")
+      .select("draw_id,tier,wallet,tx_sig")
       .in("draw_id", drawIds);
 
     if (awardsErr) {
       console.error("pastDraws: awardsErr", awardsErr);
     }
 
-    // 3) Group counts by draw_id with normalized tier keys
-    const countsByDraw = new Map();
-    if (awards?.length) {
+    // 3) Aggregate: counts by tier, and jackpot winners per draw
+    const countsByDraw = new Map();      // draw_id -> { tierKey: count }
+    const jpWinnersByDraw = new Map();   // draw_id -> [{ wallet, tx_sig }]
+
+    if (Array.isArray(awards) && awards.length) {
       for (const row of awards) {
-        const k = row.draw_id;
-        const norm = normalizeTier(row.tier);
-        if (!norm) continue; // skip unknown labels
-        if (!countsByDraw.has(k)) countsByDraw.set(k, {});
-        const bucket = countsByDraw.get(k);
-        bucket[norm] = (bucket[norm] || 0) + 1;
+        const drawId = row.draw_id;
+        const tierKey = normalizeTier(row.tier);
+        if (!tierKey) continue;
+
+        // counts
+        if (!countsByDraw.has(drawId)) countsByDraw.set(drawId, {});
+        const bucket = countsByDraw.get(drawId);
+        bucket[tierKey] = (bucket[tierKey] || 0) + 1;
+
+        // jackpot winners list
+        if (tierKey === "jackpot") {
+          if (!jpWinnersByDraw.has(drawId)) jpWinnersByDraw.set(drawId, []);
+          jpWinnersByDraw.get(drawId).push({
+            wallet: row.wallet || null,
+            tx_sig: row.tx_sig || null,
+          });
+        }
       }
     }
 
-    // 4) Shape response with guaranteed presence of all tiers
+    // 4) Shape response with all tiers guaranteed + jackpot_winners array
     const items = draws.map((d) => {
       const base = Object.fromEntries(CANON_TIERS.map((t) => [t, 0]));
       const found = countsByDraw.get(d.id) || {};
@@ -118,9 +122,10 @@ export default async function handler(req, res) {
         entries: Number(d.entries || 0),
         rolled_over: !!d.rolled_over,
         tx_signature: d.tx_signature || null,
-        winner: d.winner || null, // legacy single-winner field if you still use it
+        winner: d.winner || null, // legacy single-address field (kept for backward compat)
         winning_numbers: { nums, moonball },
-        tierCounts, // { jackpot, "4", "3+MB", "3", "2+MB", "1+MB", "0+MB" }
+        tierCounts,                                // { jackpot, "4", "3+MB", "3", "2+MB", "1+MB", "0+MB" }
+        jackpot_winners: jpWinnersByDraw.get(d.id) || [], // [{ wallet, tx_sig }]
       };
     });
 

@@ -837,7 +837,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
             }
           }}
         >
-          {loading ? "Processing..." : `Buy Tickets Now`}
+          {loading ? "Processing..." : `Get Moontickets`}
         </button>
       </div>
 
