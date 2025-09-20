@@ -187,10 +187,10 @@ export default function PastDrawings() {
               </table>
             </div>
 
-            {/* Jackpot Winners (addresses + SolScan link) */}
-            {(jackpotWinners && jackpotWinners.length > 0) ? (
-              <div className="mt-5">
-                <div className="font-semibold mb-1">Jackpot Winners</div>
+            {/* Jackpot Winners (addresses + SolScan link) — always shown */}
+            <div className="mt-5">
+              <div className="font-semibold mb-1">Jackpot Winners</div>
+              {(jackpotWinners && jackpotWinners.length > 0) ? (
                 <ul className="space-y-1">
                   {jackpotWinners.map((w, idx) => (
                     <li key={idx} className="break-all">
@@ -208,13 +208,12 @@ export default function PastDrawings() {
                     </li>
                   ))}
                 </ul>
-              </div>
-            ) : draw?.winner ? (
-              <div className="mt-5">
-                <div className="font-semibold mb-1">Jackpot Winners</div>
+              ) : draw?.winner ? (
                 <div className="break-all">{draw.winner}</div>
-              </div>
-            ) : null}
+              ) : (
+                <div className="opacity-80">No jackpot winners this drawing.</div>
+              )}
+            </div>
 
             {/* Transaction link for the jackpot funding (if any) */}
             {draw?.tx_signature && (
