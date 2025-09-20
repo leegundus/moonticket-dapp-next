@@ -29,15 +29,18 @@ const TIERS = [
 
 /* ---------- Helpers to read/compute counts ---------- */
 
+function normTierString(v) {
+  return String(v || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
 /** Map a single award row to our display tier key. */
 function awardToTierKey(a = {}) {
-  // Normalize fields that may come back in different shapes
-  const tier = (a.tier || "").toUpperCase();
+  const tierStr = normTierString(a.tier);
   const matches = Number(a.matches ?? a.match_count ?? a.num_matches ?? 0);
   const mb = Boolean(a.moonball_mat ?? a.moonball ?? a.mb ?? false);
 
-  // If the backend already labeled it "JACKPOT", trust that.
-  if (tier === "JACKPOT") return "jackpot";
+  // If backend labeled as JACKPOT (any spacing/case), trust that
+  if (tierStr === "JACKPOT") return "jackpot";
 
   // Otherwise derive from matches + moonball flag
   if (matches === 4 && mb) return "jackpot";
@@ -48,7 +51,9 @@ function awardToTierKey(a = {}) {
   if (matches === 1 && mb) return "1+MB";
   if (matches === 0 && mb) return "0+MB";
 
-  // Unknown/unsupported patterns contribute to no displayed tier
+  // Some backends may encode the tier directly as "3+MB", etc.
+  if (["4","3+MB","3","2+MB","1+MB","0+MB"].includes(tierStr)) return tierStr;
+
   return null;
 }
 
@@ -75,19 +80,21 @@ function readWinningNums(draw) {
   return { nums: Array.isArray(nums) ? nums : [], moonball };
 }
 
-/** Read a tier count with graceful fallbacks (API may already aggregate). */
+/** Read a tier count with graceful fallbacks; prefer the larger of API vs computed. */
 function readTierCount(draw, key, computedCounts) {
-  // 1) If API provided a tierCounts object, prefer it
-  const v1 = draw?.tierCounts?.[key] ?? draw?.winners_by_tier?.[key];
-  if (typeof v1 === "number") return v1;
+  let best = 0;
 
-  // 2) Some APIs send an array like [{tier:"3+MB", count:2}, ...]
+  // API object like { tierCounts: { "3+MB": 2, jackpot: 1 } }
+  const v1 = draw?.tierCounts?.[key] ?? draw?.winners_by_tier?.[key];
+  if (typeof v1 === "number") best = Math.max(best, v1);
+
+  // Array like [{tier:"3+MB", count:2}, ...]
   if (Array.isArray(draw?.tiers)) {
     const f = draw.tiers.find((t) => t.key === key || t.tier === key || t.name === key);
-    if (f && typeof f.count === "number") return f.count;
+    if (f && typeof f.count === "number") best = Math.max(best, f.count);
   }
 
-  // 3) Direct properties with different naming
+  // Direct properties with different naming conventions
   const normalized = key.replace("+", "_plus_").replace("MB", "mb");
   const v2 =
     draw?.[key] ??
@@ -95,10 +102,14 @@ function readTierCount(draw, key, computedCounts) {
     draw?.[`winners_${key}`] ??
     draw?.[`count_${normalized}`] ??
     draw?.[`winners_${normalized}`];
-  if (typeof v2 === "number") return v2;
+  if (typeof v2 === "number") best = Math.max(best, v2);
 
-  // 4) Client-side computed from prize awards
-  return computedCounts?.[key] ?? 0;
+  // Client-side computed from awards
+  if (computedCounts && typeof computedCounts[key] === "number") {
+    best = Math.max(best, computedCounts[key]);
+  }
+
+  return best;
 }
 
 /* ---------- Page ---------- */
