@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-/* ---------------- Winning numbers (image chips) ---------------- */
+/* ---------- Winning numbers (image chips) ---------- */
 function WinningNumbers({ nums = [], moonball = null, size = 56 }) {
   const ordered = Array.isArray(nums) ? [...nums].sort((a, b) => a - b) : [];
   const ball = { width: size, height: size, objectFit: "contain" };
@@ -16,7 +16,7 @@ function WinningNumbers({ nums = [], moonball = null, size = 56 }) {
   );
 }
 
-/* ---------------- Tier list (display order) ---------------- */
+/* ---------- Tiers (display order) ---------- */
 const TIERS = [
   { key: "jackpot", label: "Jackpot", rule: "4 numbers + Moonball" },
   { key: "4",       label: "4",       rule: "4 numbers" },
@@ -27,35 +27,27 @@ const TIERS = [
   { key: "0+MB",    label: "0+MB",    rule: "Moonball only" },
 ];
 
-/* ---------------- Helpers ---------------- */
-const norm = (v) => String(v ?? "").trim().toUpperCase();
+/* ---------- Helpers to read counts from /api/pastDraws ---------- */
+function readTierCount(draw, key) {
+  // Prefer nested objects if present
+  const v1 = draw?.tierCounts?.[key] ?? draw?.winners_by_tier?.[key];
+  if (typeof v1 === "number") return v1;
 
-function mapAwardToTierKey(a = {}) {
-  // Primary: trust the text in the "tier" column
-  const t = norm(a.tier ?? a.tier_name ?? a.level);
-  if (t === "JACKPOT") return "jackpot";
-  if (["4", "3+MB", "3", "2+MB", "1+MB", "0+MB"].includes(t)) return t;
-
-  // Fallback inference from matches + moonball flags if needed
-  const m = Number(a.matches ?? a.match_count ?? a.num_matches ?? 0);
-  const mb = Boolean(a.moonball_mat ?? a.moonball ?? a.mb ?? a.moonball_match);
-  if (m === 4 && mb) return "jackpot";
-  if (m === 4) return "4";
-  if (m === 3 && mb) return "3+MB";
-  if (m === 3) return "3";
-  if (m === 2 && mb) return "2+MB";
-  if (m === 1 && mb) return "1+MB";
-  if (m === 0 && mb) return "0+MB";
-  return null;
-}
-
-function countsFromAwards(awards = []) {
-  const counts = { jackpot: 0, "4": 0, "3+MB": 0, "3": 0, "2+MB": 0, "1+MB": 0, "0+MB": 0 };
-  for (const a of awards) {
-    const k = mapAwardToTierKey(a);
-    if (k) counts[k] += 1;
+  // Some APIs ship an array of tiers with {key,count}
+  if (Array.isArray(draw?.tiers)) {
+    const f = draw.tiers.find((t) => t.key === key || t.tier === key || t.name === key);
+    if (f && typeof f.count === "number") return f.count;
   }
-  return counts;
+
+  // Fallback to flat properties with different namings
+  const normalized = key.replace("+", "_plus_").replace("MB", "mb");
+  const v2 =
+    draw?.[key] ??
+    draw?.[`count_${key}`] ??
+    draw?.[`winners_${key}`] ??
+    draw?.[`count_${normalized}`] ??
+    draw?.[`winners_${normalized}`];
+  return typeof v2 === "number" ? v2 : 0;
 }
 
 function readWinningNums(draw = {}) {
@@ -70,23 +62,19 @@ function readWinningNums(draw = {}) {
   return { nums: Array.isArray(nums) ? nums : [], moonball };
 }
 
-/* ---------------- Page ---------------- */
+/* ========================= Page ========================= */
 export default function PastDrawings() {
   const [draws, setDraws] = useState([]);
-  const [i, setI] = useState(0);
-  const draw = useMemo(() => (draws.length ? draws[i] : null), [draws, i]);
+  const [i, setI] = useState(0); // current index (0 = most recent)
 
-  // raw awards for the currently selected draw (from prize_awards table)
-  const [awards, setAwards] = useState([]);
-  const awardCounts = useMemo(() => countsFromAwards(awards), [awards]);
-
-  // Load draw list
+  // Load draw list (ONLY this endpoint)
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/pastDraws");
         const data = await res.json();
         const list = Array.isArray(data) ? data : data?.items || [];
+        // newest first if API returned oldest first
         const sorted =
           list.length && new Date(list[0]?.draw_date) < new Date(list[list.length - 1]?.draw_date)
             ? [...list].reverse()
@@ -99,42 +87,6 @@ export default function PastDrawings() {
     })();
   }, []);
 
-  // Load awards *for the selected draw* directly from the prize_awards table API
-  useEffect(() => {
-    if (!draw?.id) {
-      setAwards([]);
-      return;
-    }
-    (async () => {
-      try {
-        // IMPORTANT: This endpoint must return rows from public.prize_awards for the given draw_id.
-        // Example shape we expect per row: { draw_id, wallet, tier, matches, moonball_mat, tx_sig, ... }
-        const res = await fetch(`/api/prizeAwards?drawId=${encodeURIComponent(draw.id)}`);
-        const data = await res.json();
-        setAwards(Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []);
-      } catch {
-        setAwards([]);
-      }
-    })();
-  }, [draw?.id]);
-
-  const { nums, moonball } = readWinningNums(draw || {});
-  const treasurySol = Number(draw?.jackpot_sol || 0); // treasury snapshot
-  const dt = draw?.draw_date ? new Date(draw.draw_date) : null;
-
-  // Jackpot totals: count strictly by "JACKPOT" rows in prize_awards
-  const jackpotWinners = awardCounts.jackpot;
-  // If you store explicit payout pool use it, else take 80% of treasury:
-  const totalJackpotSol =
-    Number(draw?.jackpot_payout_sol ?? draw?.jackpot_sol_payout) ||
-    (treasurySol > 0 ? treasurySol * 0.8 : 0);
-  const perWinnerSol = jackpotWinners > 0 && totalJackpotSol > 0
-    ? totalJackpotSol / jackpotWinners
-    : 0;
-
-  // Jackpot payout txs (if prize_awards rows include tx_sig)
-  const jackpotAwards = awards.filter((a) => mapAwardToTierKey(a) === "jackpot");
-
   // keyboard arrow nav
   useEffect(() => {
     const onKey = (e) => {
@@ -144,6 +96,31 @@ export default function PastDrawings() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [draws.length]);
+
+  const draw = useMemo(() => (draws.length ? draws[i] : null), [draws, i]);
+  const { nums, moonball } = readWinningNums(draw || {});
+  const treasurySol = Number(draw?.jackpot_sol || 0);
+  const dt = draw?.draw_date ? new Date(draw.draw_date) : null;
+
+  // Winner counts (all tiers) from the same payload
+  const counts = useMemo(() => {
+    const out = {};
+    for (const t of TIERS) out[t.key] = readTierCount(draw || {}, t.key);
+    return out;
+  }, [draw]);
+
+  // Jackpot math (80% of treasury divided by number of jackpot winners)
+  const jackpotWinners =
+    counts.jackpot ||
+    Number(draw?.jackpot_winners || 0); // optional alt field if your API has it
+  const totalJackpotSol = treasurySol > 0 ? treasurySol * 0.8 : 0;
+  const perWinnerSol =
+    jackpotWinners > 0 && totalJackpotSol > 0
+      ? totalJackpotSol / jackpotWinners
+      : 0;
+
+  // Optional array of per-winner payout txs if you choose to add later
+  const jackpotTxSigs = Array.isArray(draw?.jackpot_tx_sigs) ? draw.jackpot_tx_sigs : [];
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-yellow-400 overflow-x-hidden">
@@ -185,7 +162,7 @@ export default function PastDrawings() {
               </div>
             </div>
 
-            {/* Jackpot overview */}
+            {/* Jackpot snapshot */}
             <div className="mt-3">
               <div className="font-semibold">Jackpot (SOL)</div>
               <div>{treasurySol.toFixed(4)}</div>
@@ -204,7 +181,7 @@ export default function PastDrawings() {
               <WinningNumbers nums={nums} moonball={moonball} />
             </div>
 
-            {/* Tier breakdown (counts come ONLY from prize_awards) */}
+            {/* Tier breakdown */}
             <div className="mt-5 overflow-hidden rounded border border-yellow-300/30">
               <table className="w-full text-sm">
                 <thead className="bg-yellow-300/10">
@@ -219,51 +196,55 @@ export default function PastDrawings() {
                     <tr key={t.key} className="hover:bg-yellow-300/5">
                       <td className="px-3 py-2 font-semibold">{t.label}</td>
                       <td className="px-3 py-2">{t.rule}</td>
-                      <td className="px-3 py-2 text-right">{awardCounts[t.key] ?? 0}</td>
+                      <td className="px-3 py-2 text-right">{counts[t.key] ?? 0}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Jackpot payout transactions */}
-            {jackpotAwards.length > 0 && (
+            {/* Optional: per-winner payout txs if your API includes them */}
+            {jackpotTxSigs.length > 0 && (
               <div className="mt-4">
                 <div className="font-semibold mb-1">Jackpot Payout Transactions</div>
                 <ul className="list-disc ml-5 space-y-1">
-                  {jackpotAwards.map((a, idx) => {
-                    const tx = a.tx_sig || a.tx_signature || a.sig || a.signature;
-                    const wallet = a.wallet || a.to || a.recipient;
-                    return (
-                      <li key={idx} className="break-all">
-                        {wallet ? <span className="opacity-90">{wallet}</span> : <span>Winner #{idx + 1}</span>}{" "}
-                        {tx && (
-                          <>
-                            {" • "}
-                            <a
-                              href={`https://solscan.io/tx/${tx}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="underline text-blue-400"
-                            >
-                              View on Solscan
-                            </a>
-                          </>
-                        )}
-                      </li>
-                    );
-                  })}
+                  {jackpotTxSigs.map((sig, idx) => (
+                    <li key={idx} className="break-all">
+                      <a
+                        href={`https://solscan.io/tx/${sig}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-blue-400"
+                      >
+                        {sig}
+                      </a>
+                    </li>
+                  ))}
                 </ul>
               </div>
             )}
 
-            {/* Single winner fallback (legacy field) */}
+            {/* Legacy single-winner field (if present) */}
             <div className="mt-4">
               <div className="font-semibold">Winner</div>
               <div className="break-all">
                 {draw?.rolled_over ? "None (Rolled Over)" : draw?.winner || "—"}
               </div>
             </div>
+
+            {/* Main transaction for the draw (if provided) */}
+            {draw?.tx_signature && (
+              <div className="mt-2">
+                <a
+                  href={`https://solscan.io/tx/${draw.tx_signature}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-400 break-all"
+                >
+                  View draw transaction on Solscan
+                </a>
+              </div>
+            )}
           </div>
         )}
       </main>
