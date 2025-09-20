@@ -73,25 +73,60 @@ function readWinningNums(draw) {
   return { nums, moonball };
 }
 
+// Normalize any response shape into an array of draws
+function normalizeDrawList(data) {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.draws)) return data.draws;
+  if (Array.isArray(data.results)) return data.results;
+  // Sometimes API wraps success:
+  if (typeof data === "object") {
+    for (const k of Object.keys(data)) {
+      if (Array.isArray(data[k])) return data[k];
+    }
+  }
+  return [];
+}
+
 export default function PastDrawings() {
   const [draws, setDraws] = useState([]);
   const [i, setI] = useState(0); // current index (0 = most recent)
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
 
   useEffect(() => {
     (async () => {
+      setLoading(true);
+      setErr("");
       try {
-        const res = await fetch("/api/pastDraws");
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data?.items || [];
-        // newest first; fall back if API returns oldest first
-        const sorted =
-          list.length && new Date(list[0]?.draw_date) < new Date(list[list.length - 1]?.draw_date)
-            ? [...list].reverse()
-            : list;
+        // Primary request
+        let res = await fetch("/api/pastDraws");
+        let data = await res.json().catch(() => ({}));
+        let list = normalizeDrawList(data);
+
+        // If still empty, try with a generous limit as a fallback
+        if (!list.length) {
+          res = await fetch("/api/pastDraws?limit=100");
+          data = await res.json().catch(() => ({}));
+          list = normalizeDrawList(data);
+        }
+
+        // newest first
+        const sorted = [...list].sort((a, b) => {
+          const da = new Date(a?.draw_date || a?.date || 0).getTime();
+          const db = new Date(b?.draw_date || b?.date || 0).getTime();
+          return db - da;
+        });
+
         setDraws(sorted);
         setI(0);
-      } catch {
+      } catch (e) {
+        setErr("Failed to load past draws.");
         setDraws([]);
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
@@ -109,15 +144,23 @@ export default function PastDrawings() {
   const draw = useMemo(() => (draws.length ? draws[i] : null), [draws, i]);
   const { nums, moonball } = readWinningNums(draw || {});
   const jackpotSol = Number(draw?.jackpot_sol || draw?.jackpotSol || 0);
-  const dt = draw?.draw_date ? new Date(draw.draw_date) : null;
+  const dt = draw?.draw_date ? new Date(draw.draw_date) : draw?.date ? new Date(draw.date) : null;
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-yellow-400 overflow-x-hidden">
       <main className="flex-grow px-4 sm:px-6 pt-40 max-w-4xl mx-auto w-full">
         <h1 className="text-2xl font-bold mb-4">Past Drawings</h1>
 
-        {!draw ? (
-          <p>No draws yet.</p>
+        {loading ? (
+          <p>Loading…</p>
+        ) : !draw ? (
+          <div>
+            <p>No draws yet.</p>
+            {err ? <p className="text-yellow-300/80 text-sm mt-2">{err}</p> : null}
+            {!err && draws && Array.isArray(draws) && draws.length === 0 ? (
+              <p className="text-yellow-300/60 text-xs mt-1">API returned an empty list.</p>
+            ) : null}
+          </div>
         ) : (
           <div className="border border-yellow-600 rounded p-4">
             {/* Header: date + pager */}
