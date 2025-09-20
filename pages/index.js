@@ -81,36 +81,15 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Buttons */}
-      <div className="flex flex-col items-center space-y-6">
-        <div className="grid grid-cols-2 gap-6">
-          {/*
-          <button onClick={() => window.location.href = "/jackpot"}>
-            <img src="/jackpot-button.png" alt="Jackpot" className="w-40 md:w-48 mx-auto block cursor-pointer" />
-          </button>
-          <button onClick={() => window.location.href = "/buytix"}>
-            <img src="/buyTix-button.png" alt="Buy TIX" className="w-40 md:w-48 mx-auto block cursor-pointer" />
-          </button>
-          */}
-          <Link href="/past">
-            <img src="/past-button.png" alt="Winners" className="w-40 md:w-48 mx-auto block cursor-pointer" />
-          </Link>
-          <Link href="/Moontickets">
-            <img src="/moontickets-button.png" alt="NFTs" className="w-40 md:w-48 mx-auto block cursor-pointer" />
-          </Link>
-          {/*
-          <Link href="/burn">
-            <img src="/burn-button.png" alt="Burn to Earn" className="w-40 md:w-48 mx-auto block cursor-pointer" />
-          </Link>
-          <Link href="/staking">
-            <img src="/staking-button.png" alt="Staking" className="w-40 md:w-48 mx-auto block cursor-pointer" />
-          </Link>
-        </div>
-
-        <Link href="/whitepaper">
-          <img src="/whitepaper-button.png" alt="Whitepaper" className="w-40 md:w-48 mx-auto block cursor-pointer" />
+      {/* Single Moontickets button */}
+      <div className="flex justify-center mt-10">
+        <Link href="/Moontickets">
+          <img
+            src="/getMoontickets-button.png"
+            alt="Get Moontickets"
+            className="w-48 md:w-56 lg:w-64 mx-auto block cursor-pointer"
+          />
         </Link>
-        */}
       </div>
     </div>
   );
