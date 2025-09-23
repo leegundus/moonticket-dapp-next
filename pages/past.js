@@ -3,14 +3,18 @@ import { useEffect, useState, useMemo } from "react";
 // --- Render the winning numbers using your images ---
 function WinningNumbers({ nums = [], moonball = null, size = 80 }) {
   const ordered = Array.isArray(nums) ? [...nums].sort((a, b) => a - b) : [];
-  const ball = { width: size, height: size, objectFit: "contain", flex: "0 0 auto" };
+  // Keep balls at `size` on wider screens, but on small screens shrink so five fit across.
+  // 17.5vw gives <= ~65–70px on 375px screens, which fits five across with small gaps.
+  const responsiveSide = `min(${size}px, 17.5vw)`;
+  const ball = { width: responsiveSide, height: responsiveSide, objectFit: "contain" };
+
   return (
-    <div className="flex items-center gap-1 sm:gap-2 flex-nowrap overflow-x-auto whitespace-nowrap [-webkit-overflow-scrolling:touch]">
+    <div className="flex items-center justify-between gap-1 sm:gap-2 w-full">
       {ordered.map((n, i) => (
         <img key={`n${i}`} src={`/numbers/yellow/${n}.png`} alt={`${n}`} style={ball} />
       ))}
       {moonball != null && (
-        <img src={`/numbers/green/${moonball}.png`} alt={`MB ${moonball}`} style={{ ...ball, marginLeft: 4 }} />
+        <img src={`/numbers/green/${moonball}.png`} alt={`MB ${moonball}`} style={ball} />
       )}
     </div>
   );
