@@ -3,14 +3,14 @@ import { useEffect, useState, useMemo } from "react";
 // --- Render the winning numbers using your images ---
 function WinningNumbers({ nums = [], moonball = null, size = 80 }) {
   const ordered = Array.isArray(nums) ? [...nums].sort((a, b) => a - b) : [];
-  const ball = { width: size, height: size, objectFit: "contain" };
+  const ball = { width: size, height: size, objectFit: "contain", flex: "0 0 auto" };
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-1 sm:gap-2 flex-nowrap overflow-x-auto whitespace-nowrap [-webkit-overflow-scrolling:touch]">
       {ordered.map((n, i) => (
         <img key={`n${i}`} src={`/numbers/yellow/${n}.png`} alt={`${n}`} style={ball} />
       ))}
       {moonball != null && (
-        <img src={`/numbers/green/${moonball}.png`} alt={`MB ${moonball}`} style={{ ...ball, marginLeft: 6 }} />
+        <img src={`/numbers/green/${moonball}.png`} alt={`MB ${moonball}`} style={{ ...ball, marginLeft: 4 }} />
       )}
     </div>
   );
