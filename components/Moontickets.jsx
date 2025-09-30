@@ -344,7 +344,6 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       : null;
 
   const handleBuy = async () => {
-  // basic input guard
   const solStr = String(solInput || "").trim();
   const solNum = parseFloat(solStr);
   if (!solStr || Number.isNaN(solNum) || solNum <= 0) return;
@@ -366,15 +365,14 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     const opsLamports = Math.floor(totalLamports * 0.01);
     const treasuryLamports = totalLamports - opsLamports;
 
-    // --- Preflight: balance, ATA rent, fee estimate (no Phantom yet) ---
+    // --- Preflight: balance, ATA rent, fee estimate ---
     const buyerLamports = await connection.getBalance(buyerPk);
 
-    // check if buyer has TIX ATA; if missing, user will pay rent
     const buyerAta = await getAssociatedTokenAddress(TIX_MINT, buyerPk);
     const ataInfo = await connection.getAccountInfo(buyerAta);
     const ataRentNeeded = ataInfo
       ? 0
-      : await connection.getMinimumBalanceForRentExemption(165); // SPL token account size
+      : await connection.getMinimumBalanceForRentExemption(165); // token account size
 
     // Build the exact message we plan to send, to estimate fee
     const preIxs = [];
@@ -382,7 +380,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       preIxs.push(
         createAssociatedTokenAccountInstruction(
           buyerPk,      // payer (user)
-          buyerAta,     // ATA to create
+          buyerAta,     // ATA
           buyerPk,      // owner
           TIX_MINT
         )
@@ -404,39 +402,38 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     const { blockhash: bh } = await connection.getLatestBlockhash("confirmed");
     const preTx = new Transaction({ feePayer: buyerPk, recentBlockhash: bh }).add(...preIxs);
 
-    // get network fee for this exact message
     let feeLamports = 0;
     try {
-      const res = await connection.getFeeForMessage(preTx.compileMessage());
-      feeLamports = typeof res === "number" ? res : (res?.value ?? 0);
+      const feeRes = await connection.getFeeForMessage(preTx.compileMessage());
+      feeLamports = typeof feeRes === "number" ? feeRes : (feeRes?.value ?? 0);
     } catch {
-      // fallback: one sig base fee (safe underestimate for modern clusters)
-      feeLamports = 5000;
+      feeLamports = 5000; // fallback
     }
 
-    // small buffer to cover priority-fee variance etc.
-    const FEE_BUFFER_LAMPORTS = 300_000; // ~0.0003 SOL
-    const requiredLamports = totalLamports + ataRentNeeded + feeLamports + FEE_BUFFER_LAMPORTS;
+    // ✅ Stronger safety margins to avoid Phantom's malicious warning
+    const FEE_BUFFER_LAMPORTS = 500_000;              // ~0.0005 SOL buffer
+    const MIN_REMAINING_BALANCE_LAMPORTS = 100_000;   // ~0.0001 SOL should remain after tx
+
+    const requiredLamports =
+      totalLamports + ataRentNeeded + feeLamports + FEE_BUFFER_LAMPORTS + MIN_REMAINING_BALANCE_LAMPORTS;
 
     if (buyerLamports < requiredLamports) {
       const shortfall = (requiredLamports - buyerLamports) / 1e9;
-      const estFees = (ataRentNeeded + feeLamports + FEE_BUFFER_LAMPORTS) / 1e9;
+      const estFees = (ataRentNeeded + feeLamports + FEE_BUFFER_LAMPORTS + MIN_REMAINING_BALANCE_LAMPORTS) / 1e9;
 
-      // Friendly message showing the same preview + fee estimate
-      const msg =
+      alert(
         `Not enough SOL to complete purchase.\n\n` +
-        `You entered: ${solNum} SOL\n` +
-        `Estimated fees (network + ${ataRentNeeded ? "ATA rent + " : ""}buffer): ~${estFees.toFixed(6)} SOL\n` +
+        `Entered: ${solNum} SOL\n` +
+        `Estimated fees${ataRentNeeded ? " (incl. ATA rent)" : ""}: ~${estFees.toFixed(6)} SOL\n` +
         `Total required: ${(requiredLamports / 1e9).toFixed(6)} SOL\n` +
         `Your balance: ${(buyerLamports / 1e9).toFixed(6)} SOL\n` +
-        `Short by: ${shortfall.toFixed(6)} SOL.\n\n` +
-        `Tip: reduce SOL amount or top up to avoid Phantom’s red warning.`;
-      alert(msg);
+        `Short by: ${shortfall.toFixed(6)} SOL.\n\n` 
+      );
       setLoadingBuy(false);
       return;
     }
 
-    // --- Now open Phantom and send ONE transaction (ATA create if needed + transfers) ---
+    // --- Build single tx (create ATA if needed + both transfers) and ask Phantom to sign ---
     if (!window?.solana) throw new Error("Phantom not found");
     try {
       await window.solana.connect({ onlyIfTrusted: true }).catch(() => window.solana.connect());
@@ -448,15 +445,15 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     const phantomPubkey = window.solana.publicKey;
     if (!phantomPubkey) throw new Error("Wallet not connected");
     const pkStr = phantomPubkey.toString();
-    if (pkStr !== wallet) setWallet(pkStr); // keep local state in sync
+    if (pkStr !== wallet) setWallet(pkStr);
 
-    // rebuild tx with Phantom's fresh blockhash + fee payer
     const ixs = [];
     if (!ataInfo) {
+      const pAta = await getAssociatedTokenAddress(TIX_MINT, phantomPubkey);
       ixs.push(
         createAssociatedTokenAccountInstruction(
           phantomPubkey,
-          await getAssociatedTokenAddress(TIX_MINT, phantomPubkey),
+          pAta,
           phantomPubkey,
           TIX_MINT
         )
@@ -483,21 +480,17 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
 
-    // backend mints/credits TIX based on USD
+    // backend credits TIX based on USD
     const res2 = await fetch("/api/buyTix", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        walletAddress: pkStr,
-        solAmount: solNum,
-      }),
+      body: JSON.stringify({ walletAddress: pkStr, solAmount: solNum }),
     });
     const data = await res2.json();
     if (!data.success) throw new Error(data.error || "TIX transfer failed");
 
     setResultBuy(data);
 
-    // refresh balance + credits
     try {
       const lam = await connection.getBalance(phantomPubkey);
       setSolBalance(lam / 1e9);
