@@ -338,73 +338,84 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       : null;
 
   const handleBuy = async () => {
-    if (isNaN(parseFloat(solInput))) return;
-    setLoadingBuy(true);
-    setResultBuy(null);
+  if (isNaN(parseFloat(solInput))) return;
+  setLoadingBuy(true);
+  setResultBuy(null);
 
+  try {
+    if (!window?.solana) throw new Error("Phantom not found");
+
+    // ensure connection (silent first, then interactive)
     try {
-      if (!window?.solana) throw new Error("Phantom not found");
-      // ensure connection (silent first, then interactive)
-      try {
-        await window.solana.connect({ onlyIfTrusted: true }).catch(() => window.solana.connect());
-      } catch {
-        setLoadingBuy(false);
-        return; // user cancelled
-      }
-
-      const phantomPubkey = window.solana.publicKey;
-      if (!phantomPubkey) throw new Error("Wallet not connected");
-      const pkStr = phantomPubkey.toString();
-      if (pkStr !== wallet) setWallet(pkStr); // keep local state in sync
-
-      const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
-      const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
-
-      // ⚠️ Single transfer only (Phantom is less likely to warn on simple transfers)
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: phantomPubkey,
-          toPubkey: TREASURY_WALLET,
-          lamports: totalLamports,
-        })
-      );
-
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = phantomPubkey;
-
-      const sigRes = await window.solana.signAndSendTransaction(tx);
-      const sig = typeof sigRes === "string" ? sigRes : sigRes.signature;
-
-      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-
-      // backend sends TIX
-      const res2 = await fetch("/api/buyTix", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          walletAddress: pkStr,
-          solAmount: parseFloat(solInput),
-        }),
-      });
-      const data = await res2.json();
-      if (!data.success) throw new Error(data.error || "TIX transfer failed");
-
-      setResultBuy(data);
-
-      // refresh balance + credits
-      try {
-        const lam = await connection.getBalance(phantomPubkey);
-        setSolBalance(lam / 1e9);
-      } catch {}
-      await fetchCredits();
-    } catch (err) {
-      console.error("Buy TIX failed:", err);
-      setResultBuy({ success: false, error: err?.message || "Failed to buy TIX" });
+      await window.solana.connect({ onlyIfTrusted: true }).catch(() => window.solana.connect());
+    } catch {
+      setLoadingBuy(false);
+      return; // user cancelled
     }
 
-    setLoadingBuy(false);
-  };
+    const phantomPubkey = window.solana.publicKey;
+    if (!phantomPubkey) throw new Error("Wallet not connected");
+    const pkStr = phantomPubkey.toString();
+    if (pkStr !== wallet) setWallet(pkStr); // keep local state in sync
+
+    // use finalized commitment for quieter Phantom preflight
+    const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "finalized");
+    const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
+
+    // SINGLE TRANSFER ONLY (to treasury)
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: phantomPubkey,
+        toPubkey: TREASURY_WALLET,
+        lamports: totalLamports,
+      })
+    );
+
+    // finalized blockhash to reduce the generic warning
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("finalized");
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = phantomPubkey;
+
+    // sign in Phantom, then submit ourselves
+    const signed = await window.solana.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: "finalized",
+      maxRetries: 3,
+    });
+
+    await connection.confirmTransaction(
+      { signature: sig, blockhash, lastValidBlockHeight },
+      "finalized"
+    );
+
+    // backend sends TIX
+    const res2 = await fetch("/api/buyTix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        walletAddress: pkStr,
+        solAmount: parseFloat(solInput),
+      }),
+    });
+    const data = await res2.json();
+    if (!data.success) throw new Error(data.error || "TIX transfer failed");
+
+    setResultBuy(data);
+
+    // refresh balance + credits
+    try {
+      const lam = await connection.getBalance(phantomPubkey);
+      setSolBalance(lam / 1e9);
+    } catch {}
+    await fetchCredits();
+  } catch (err) {
+    console.error("Buy TIX failed:", err);
+    setResultBuy({ success: false, error: err?.message || "Failed to buy TIX" });
+  }
+
+  setLoadingBuy(false);
+};
 
   // ---------------- Helper: number images ----------------
   function TicketImages({ t }) {
