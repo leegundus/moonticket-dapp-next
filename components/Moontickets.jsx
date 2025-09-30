@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
+import { useWallet } from "@solana/wallet-adapter-react";
 import useJackpotData from "../hooks/useJackpotData";
 import useCountdown from "../hooks/useCountdown";
 import CheckInButton from "./CheckInButton"; // ⬅️ added
@@ -119,6 +120,9 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       s?.off?.("accountChanged", onAcct);
     };
   }, [wallet]);
+
+  // ALSO expose wallet adapter hooks for send & sign flow
+  const { publicKey: waPubkey, sendTransaction, connect: waConnect } = useWallet();
 
   // ---------------- Jackpot header ----------------
   const jackpot = useJackpotData(); // { jackpotSol }
@@ -343,33 +347,32 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     setResultBuy(null);
 
     try {
-      if (!window?.solana) throw new Error("Phantom not found");
-      // ensure connection (silent first, then interactive)
-      try {
-        await window.solana.connect({ onlyIfTrusted: true }).catch(() => window.solana.connect());
-      } catch {
-        setLoadingBuy(false);
-        return; // user cancelled
+      // Ensure adapter-connected
+      if (!waPubkey) {
+        try {
+          await waConnect?.();
+        } catch {
+          setLoadingBuy(false);
+          return;
+        }
       }
-
-      const phantomPubkey = window.solana.publicKey;
-      if (!phantomPubkey) throw new Error("Wallet not connected");
-      const pkStr = phantomPubkey.toString();
+      if (!waPubkey) throw new Error("Wallet not connected");
+      const pkStr = waPubkey.toString();
       if (pkStr !== wallet) setWallet(pkStr); // keep local state in sync
 
       const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
-      const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
+      const totalLamports = Math.round(parseFloat(solInput) * 1e9);
       const opsLamports = Math.floor(totalLamports * 0.01);
       const treasuryLamports = totalLamports - opsLamports;
 
       const tx = new Transaction().add(
         SystemProgram.transfer({
-          fromPubkey: phantomPubkey,
+          fromPubkey: waPubkey,
           toPubkey: TREASURY_WALLET,
           lamports: treasuryLamports,
         }),
         SystemProgram.transfer({
-          fromPubkey: phantomPubkey,
+          fromPubkey: waPubkey,
           toPubkey: OPS_WALLET,
           lamports: opsLamports,
         })
@@ -377,10 +380,13 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
       tx.recentBlockhash = blockhash;
-      tx.feePayer = phantomPubkey;
+      tx.feePayer = waPubkey;
 
-      const sigRes = await window.solana.signAndSendTransaction(tx);
-      const sig = typeof sigRes === "string" ? sigRes : sigRes.signature;
+      // ✅ Use wallet adapter's sendTransaction (Phantom "send & sign" flow)
+      const sig = await sendTransaction(tx, connection, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
 
       await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
 
@@ -400,7 +406,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
       // refresh balance + credits
       try {
-        const lam = await connection.getBalance(phantomPubkey);
+        const lam = await connection.getBalance(waPubkey);
         setSolBalance(lam / 1e9);
       } catch {}
       await fetchCredits();
