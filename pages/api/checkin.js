@@ -3,12 +3,12 @@ import {
   Keypair,
   PublicKey,
   Transaction,
-  SystemProgram,
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
+  TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { createClient } from "@supabase/supabase-js";
 import bs58 from "bs58";
@@ -42,10 +42,10 @@ export default async function handler(req, res) {
       .from("daily_checkins")
       .select("streak_count, last_checkin")
       .eq("wallet", wallet)
-      .single();
+      .maybeSingle();
 
     let streak = 1;
-    let rewardAmount = 50_000; // Default Day 1: 50 TIX
+    let rewardAmount = 50_000_000; // 50 TIX @ 6 decimals
     const now = new Date();
     const oneDay = 1000 * 60 * 60 * 24;
 
@@ -58,7 +58,7 @@ export default async function handler(req, res) {
       }
 
       if (diff < oneDay * 2) {
-        streak = existing.streak_count + 1;
+        streak = (existing.streak_count || 0) + 1;
         if (streak > 7) streak = 1;
       }
     }
@@ -72,39 +72,39 @@ export default async function handler(req, res) {
       6: 500_000_000,
       7: 1_000_000_000,
     };
-    rewardAmount = rewardMap[streak] || 50_000;
+    rewardAmount = rewardMap[streak] ?? 50_000_000;
 
-    const instructions = [];
+    const ixs = [];
 
+    // If user has no TIX ATA, add an ATA create (payer = user)
     if (!ataInfo) {
-      instructions.push(
+      ixs.push(
         createAssociatedTokenAccountInstruction(
-          // CHANGED: make the USER the payer of ATA creation
-          userPublicKey,
+          userPublicKey,   // payer (user pays rent)
           userATA,
-          userPublicKey,
+          userPublicKey,   // owner
           TIX_MINT
         )
       );
     }
 
-    instructions.push(
+    // Always send the TIX from treasury -> user
+    ixs.push(
       createTransferInstruction(
         treasuryATA,
         userATA,
-        TREASURY_KEYPAIR.publicKey,
-        rewardAmount
+        TREASURY_KEYPAIR.publicKey, // authority (treasury will co-sign server-side)
+        rewardAmount,
+        [],
+        TOKEN_PROGRAM_ID
       )
     );
 
-    const transaction = new Transaction().add(...instructions);
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+    const tx = new Transaction({ feePayer: userPublicKey, recentBlockhash: blockhash }).add(...ixs);
 
-    // CHANGED: user pays the tx fees
-    transaction.feePayer = userPublicKey;
-
-    transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-
-    const base64Tx = transaction.serialize({ requireAllSignatures: false }).toString("base64");
+    // DO NOT sign here — client signs first, then server co-signs in /api/finalizeCheckin
+    const base64Tx = tx.serialize({ requireAllSignatures: false }).toString("base64");
 
     return res.status(200).json({
       transaction: base64Tx,

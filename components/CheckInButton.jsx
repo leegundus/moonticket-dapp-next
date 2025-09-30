@@ -22,7 +22,6 @@ export default function CheckInButton({ streak, lastCheckin }) {
 
   useEffect(() => {
     if (!lastCheckin || typeof streak !== "number") return;
-
     const now = new Date();
     const last = new Date(lastCheckin);
     const diff = now - last;
@@ -37,6 +36,7 @@ export default function CheckInButton({ streak, lastCheckin }) {
     setError("");
 
     try {
+      // Ask backend to build the tx (includes: optional user-paid ATA creation + TIX transfer from treasury)
       const res = await fetch("/api/checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -46,16 +46,20 @@ export default function CheckInButton({ streak, lastCheckin }) {
       const data = await res.json();
       if (res.status === 409 || data?.alreadyCheckedIn) {
         setError("You've already checked in today.");
+        setLoading(false);
         return;
       }
-      if (!res.ok) throw new Error(data.error || "Check-in failed");
+      if (!res.ok || !data?.transaction) {
+        throw new Error(data?.error || "Check-in failed");
+      }
 
+      // IMPORTANT: do not modify feePayer or recentBlockhash here.
       const tx = Transaction.from(Buffer.from(data.transaction, "base64"));
-      tx.feePayer = publicKey;
-      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
+      // User signs once (user is fee payer; also signs ATA create if needed)
       const signedTx = await signTransaction(tx);
 
+      // Send signed tx back to backend so treasury can co-sign and broadcast
       const finalizeRes = await fetch("/api/finalizeCheckin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -65,8 +69,11 @@ export default function CheckInButton({ streak, lastCheckin }) {
       });
 
       const finalizeData = await finalizeRes.json();
-      if (!finalizeData.success) throw new Error(finalizeData.error || "Finalization failed");
+      if (!finalizeRes.ok || !finalizeData?.success) {
+        throw new Error(finalizeData?.error || "Finalization failed");
+      }
 
+      // Mark streak/reward UI
       await fetch("/api/checkinConfirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,7 +89,7 @@ export default function CheckInButton({ streak, lastCheckin }) {
       setHighlighted(data.streak);
     } catch (err) {
       console.error("Check-in error:", err);
-      setError("Check-in failed. Try again.");
+      setError(err?.message || "Check-in failed. Try again.");
     } finally {
       setLoading(false);
     }
