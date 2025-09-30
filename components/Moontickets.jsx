@@ -338,14 +338,16 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       : null;
 
   const handleBuy = async () => {
-  if (isNaN(parseFloat(solInput))) return;
+  const typed = parseFloat(solInput);
+  if (Number.isNaN(typed) || typed <= 0) return;
+
   setLoadingBuy(true);
   setResultBuy(null);
 
   try {
     if (!window?.solana) throw new Error("Phantom not found");
 
-    // ensure connection (silent first, then interactive)
+    // connect (silent first)
     try {
       await window.solana.connect({ onlyIfTrusted: true }).catch(() => window.solana.connect());
     } catch {
@@ -353,68 +355,66 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       return; // user cancelled
     }
 
-    const phantomPubkey = window.solana.publicKey;
-    if (!phantomPubkey) throw new Error("Wallet not connected");
-    const pkStr = phantomPubkey.toString();
-    if (pkStr !== wallet) setWallet(pkStr); // keep local state in sync
+    const from = window.solana.publicKey;
+    if (!from) throw new Error("Wallet not connected");
+    const pkStr = from.toString();
+    if (pkStr !== wallet) setWallet(pkStr);
 
-    // use finalized commitment for quieter Phantom preflight
-    const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "finalized");
-    const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
+    // use processed to build the tx and confirm at confirmed (fewer Phantom warnings)
+    const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "processed");
 
-    // SINGLE TRANSFER ONLY (to treasury)
+    const lamports = Math.floor(typed * 1e9);
+    if (lamports <= 0) throw new Error("Amount too small");
+
+    // SINGLE transfer → Treasury only
     const tx = new Transaction().add(
       SystemProgram.transfer({
-        fromPubkey: phantomPubkey,
+        fromPubkey: from,
         toPubkey: TREASURY_WALLET,
-        lamports: totalLamports,
+        lamports,
       })
     );
 
-    // finalized blockhash to reduce the generic warning
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("finalized");
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("processed");
     tx.recentBlockhash = blockhash;
-    tx.feePayer = phantomPubkey;
+    tx.feePayer = from;
 
-    // sign in Phantom, then submit ourselves
-    const signed = await window.solana.signTransaction(tx);
-    const sig = await connection.sendRawTransaction(signed.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: "finalized",
+    // Let Phantom send it, but SKIP PREFLIGHT to suppress the simulation warning UI
+    const res = await window.solana.signAndSendTransaction(tx, {
+      skipPreflight: true,
+      preflightCommitment: "processed",
       maxRetries: 3,
     });
+    const sig = typeof res === "string" ? res : res.signature;
 
-    await connection.confirmTransaction(
-      { signature: sig, blockhash, lastValidBlockHeight },
-      "finalized"
-    );
+    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
 
-    // backend sends TIX
-    const res2 = await fetch("/api/buyTix", {
+    // backend sends TIX + credits
+    const r2 = await fetch("/api/buyTix", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         walletAddress: pkStr,
-        solAmount: parseFloat(solInput),
+        solAmount: typed,
       }),
     });
-    const data = await res2.json();
+    const data = await r2.json();
     if (!data.success) throw new Error(data.error || "TIX transfer failed");
 
     setResultBuy(data);
 
-    // refresh balance + credits
+    // refresh balances
     try {
-      const lam = await connection.getBalance(phantomPubkey);
+      const lam = await connection.getBalance(from);
       setSolBalance(lam / 1e9);
     } catch {}
     await fetchCredits();
   } catch (err) {
     console.error("Buy TIX failed:", err);
     setResultBuy({ success: false, error: err?.message || "Failed to buy TIX" });
+  } finally {
+    setLoadingBuy(false);
   }
-
-  setLoadingBuy(false);
 };
 
   // ---------------- Helper: number images ----------------
