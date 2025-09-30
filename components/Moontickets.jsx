@@ -410,9 +410,9 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       feeLamports = 5000; // fallback
     }
 
-    // ✅ Stronger safety margins to avoid Phantom's malicious warning
-    const FEE_BUFFER_LAMPORTS = 500_000;              // ~0.0005 SOL buffer
-    const MIN_REMAINING_BALANCE_LAMPORTS = 100_000;   // ~0.0001 SOL should remain after tx
+    // ✅ Stronger + dynamic safety margins to avoid Phantom's red block
+    const FEE_BUFFER_LAMPORTS = Math.max(800_000, Math.floor(buyerLamports * 0.15));   // ≥0.0008 SOL or 15% of balance
+    const MIN_REMAINING_BALANCE_LAMPORTS = Math.max(200_000, Math.floor(buyerLamports * 0.10)); // ≥0.0002 SOL or 10%
 
     const requiredLamports =
       totalLamports + ataRentNeeded + feeLamports + FEE_BUFFER_LAMPORTS + MIN_REMAINING_BALANCE_LAMPORTS;
@@ -427,7 +427,8 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         `Estimated fees${ataRentNeeded ? " (incl. ATA rent)" : ""}: ~${estFees.toFixed(6)} SOL\n` +
         `Total required: ${(requiredLamports / 1e9).toFixed(6)} SOL\n` +
         `Your balance: ${(buyerLamports / 1e9).toFixed(6)} SOL\n` +
-        `Short by: ${shortfall.toFixed(6)} SOL.\n\n` 
+        `Short by: ${shortfall.toFixed(6)} SOL.\n\n` +
+        `Tip: reduce SOL amount or top up SOL.`
       );
       setLoadingBuy(false);
       return;
