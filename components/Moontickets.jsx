@@ -11,7 +11,7 @@ const TIX_PER_TICKET = 10_000; // informational
 
 // --- Buy flow constants (same as your BuyTix.jsx) ---
 const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
-const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
+// const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
 
 function quickPickOne() {
   const pool = [...MAIN_POOL];
