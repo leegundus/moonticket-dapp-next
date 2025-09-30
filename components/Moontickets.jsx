@@ -4,7 +4,9 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import useJackpotData from "../hooks/useJackpotData";
 import useCountdown from "../hooks/useCountdown";
 import CheckInButton from "./CheckInButton"; // ⬅️ added
+import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction } from "@solana/spl-token";
 
+const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 const range = (n, start = 1) => Array.from({ length: n }, (_, i) => i + start);
 const MAIN_POOL = range(25, 1);
 const MOON_POOL = range(10, 1);
@@ -342,81 +344,132 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       : null;
 
   const handleBuy = async () => {
-    if (isNaN(parseFloat(solInput))) return;
-    setLoadingBuy(true);
-    setResultBuy(null);
+  if (isNaN(parseFloat(solInput))) return;
+  setLoadingBuy(true);
+  setResultBuy(null);
 
+  try {
+    if (!window?.solana) throw new Error("Phantom not found");
+    // ensure connection (silent first, then interactive)
     try {
-      // Ensure adapter-connected
-      if (!waPubkey) {
-        try {
-          await waConnect?.();
-        } catch {
-          setLoadingBuy(false);
-          return;
-        }
-      }
-      if (!waPubkey) throw new Error("Wallet not connected");
-      const pkStr = waPubkey.toString();
-      if (pkStr !== wallet) setWallet(pkStr); // keep local state in sync
-
-      const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
-      const totalLamports = Math.round(parseFloat(solInput) * 1e9);
-      const opsLamports = Math.floor(totalLamports * 0.01);
-      const treasuryLamports = totalLamports - opsLamports;
-
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: waPubkey,
-          toPubkey: TREASURY_WALLET,
-          lamports: treasuryLamports,
-        }),
-        SystemProgram.transfer({
-          fromPubkey: waPubkey,
-          toPubkey: OPS_WALLET,
-          lamports: opsLamports,
-        })
-      );
-
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = waPubkey;
-
-      // ✅ Use wallet adapter's sendTransaction (Phantom "send & sign" flow)
-      const sig = await sendTransaction(tx, connection, {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-      });
-
-      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-
-      // backend sends TIX
-      const res2 = await fetch("/api/buyTix", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          walletAddress: pkStr,
-          solAmount: parseFloat(solInput),
-        }),
-      });
-      const data = await res2.json();
-      if (!data.success) throw new Error(data.error || "TIX transfer failed");
-
-      setResultBuy(data);
-
-      // refresh balance + credits
-      try {
-        const lam = await connection.getBalance(waPubkey);
-        setSolBalance(lam / 1e9);
-      } catch {}
-      await fetchCredits();
-    } catch (err) {
-      console.error("Buy TIX failed:", err);
-      setResultBuy({ success: false, error: err?.message || "Failed to buy TIX" });
+      await window.solana.connect({ onlyIfTrusted: true }).catch(() => window.solana.connect());
+    } catch {
+      setLoadingBuy(false);
+      return; // user cancelled
     }
 
-    setLoadingBuy(false);
-  };
+    const phantomPubkey = window.solana.publicKey;
+    if (!phantomPubkey) throw new Error("Wallet not connected");
+    const pkStr = phantomPubkey.toString();
+    if (pkStr !== wallet) setWallet(pkStr);
+
+    const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
+
+    // --- amounts for your split ---
+    const totalLamports = Math.round(parseFloat(solInput) * 1e9);
+    const opsLamports = Math.floor(totalLamports * 0.01);
+    const treasuryLamports = totalLamports - opsLamports;
+
+    // --- check if buyer has TIX ATA; if not, we will create it in the SAME tx ---
+    const buyerAta = await getAssociatedTokenAddress(TIX_MINT, phantomPubkey);
+    const ataInfo = await connection.getAccountInfo(buyerAta, "confirmed");
+    const needsAta = !ataInfo;
+
+    // Rent needed to create an SPL token account (165 bytes)
+    const ataRentLamports = needsAta
+      ? await connection.getMinimumBalanceForRentExemption(165, "confirmed")
+      : 0;
+
+    // Build the exact transaction we'll send (so fee estimate is accurate)
+    const tx = new Transaction();
+
+    if (needsAta) {
+      tx.add(
+        createAssociatedTokenAccountInstruction(
+          phantomPubkey,   // payer (user)
+          buyerAta,        // ATA to create
+          phantomPubkey,   // owner
+          TIX_MINT
+        )
+      );
+    }
+
+    // Your SOL transfers
+    tx.add(
+      SystemProgram.transfer({
+        fromPubkey: phantomPubkey,
+        toPubkey: TREASURY_WALLET,
+        lamports: treasuryLamports,
+      }),
+      SystemProgram.transfer({
+        fromPubkey: phantomPubkey,
+        toPubkey: OPS_WALLET,
+        lamports: opsLamports,
+      })
+    );
+
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = phantomPubkey;
+
+    // ---- Preflight balance check: fee + transfers + ATA rent (if needed) ----
+    const [estimatedFeeLamports, balanceLamports] = await Promise.all([
+      connection.getFeeForMessage(tx.compileMessage(), "confirmed").then(r => r.value ?? 5000),
+      connection.getBalance(phantomPubkey, "confirmed"),
+    ]);
+
+    const SAFETY = 2000; // tiny cushion
+    const requiredLamports =
+      treasuryLamports + opsLamports + ataRentLamports + estimatedFeeLamports + SAFETY;
+
+    if (balanceLamports < requiredLamports) {
+      const maxSpendLamports =
+        Math.max(0, balanceLamports - (ataRentLamports + estimatedFeeLamports + SAFETY));
+      const maxSpendSOL = Math.floor((maxSpendLamports / 1e9) * 1e6) / 1e6; // 6dp
+      setLoadingBuy(false);
+      alert(
+        `Insufficient SOL to cover purchase, fees${needsAta ? " and ATA rent" : ""}.\n\n` +
+        `Your balance: ${(balanceLamports/1e9).toFixed(6)} SOL\n` +
+        `Estimated fee: ${(estimatedFeeLamports/1e9).toFixed(6)} SOL` +
+        (needsAta ? `\nATA rent: ${(ataRentLamports/1e9).toFixed(6)} SOL` : "") +
+        `\n\nMax spend right now: ~${maxSpendSOL} SOL`
+      );
+      return;
+    }
+
+    // ✅ Send through Phantom (single prompt)
+    const sigRes = await window.solana.signAndSendTransaction(tx);
+    const sig = typeof sigRes === "string" ? sigRes : sigRes.signature;
+
+    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+
+    // backend sends TIX
+    const res2 = await fetch("/api/buyTix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        walletAddress: pkStr,
+        solAmount: parseFloat(solInput),
+      }),
+    });
+    const data = await res2.json();
+    if (!data.success) throw new Error(data.error || "TIX transfer failed");
+
+    setResultBuy(data);
+
+    // refresh balance + credits
+    try {
+      const lam = await connection.getBalance(phantomPubkey, "confirmed");
+      setSolBalance(lam / 1e9);
+    } catch {}
+    await fetchCredits();
+  } catch (err) {
+    console.error("Buy TIX failed:", err);
+    setResultBuy({ success: false, error: err?.message || "Failed to buy TIX" });
+  }
+
+  setLoadingBuy(false);
+};
 
   // ---------------- Helper: number images ----------------
   function TicketImages({ t }) {
