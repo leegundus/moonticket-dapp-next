@@ -344,58 +344,125 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       : null;
 
   const handleBuy = async () => {
-  if (isNaN(parseFloat(solInput))) return;
+  // basic input guard
+  const solStr = String(solInput || "").trim();
+  const solNum = parseFloat(solStr);
+  if (!solStr || Number.isNaN(solNum) || solNum <= 0) return;
+
+  if (!wallet) {
+    alert("Connect your wallet first.");
+    return;
+  }
+
   setLoadingBuy(true);
   setResultBuy(null);
 
   try {
+    const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
+    const buyerPk = new PublicKey(wallet);
+
+    // amounts (lamports)
+    const totalLamports = Math.floor(solNum * 1e9);
+    const opsLamports = Math.floor(totalLamports * 0.01);
+    const treasuryLamports = totalLamports - opsLamports;
+
+    // --- Preflight: balance, ATA rent, fee estimate (no Phantom yet) ---
+    const buyerLamports = await connection.getBalance(buyerPk);
+
+    // check if buyer has TIX ATA; if missing, user will pay rent
+    const buyerAta = await getAssociatedTokenAddress(TIX_MINT, buyerPk);
+    const ataInfo = await connection.getAccountInfo(buyerAta);
+    const ataRentNeeded = ataInfo
+      ? 0
+      : await connection.getMinimumBalanceForRentExemption(165); // SPL token account size
+
+    // Build the exact message we plan to send, to estimate fee
+    const preIxs = [];
+    if (!ataInfo) {
+      preIxs.push(
+        createAssociatedTokenAccountInstruction(
+          buyerPk,      // payer (user)
+          buyerAta,     // ATA to create
+          buyerPk,      // owner
+          TIX_MINT
+        )
+      );
+    }
+    preIxs.push(
+      SystemProgram.transfer({
+        fromPubkey: buyerPk,
+        toPubkey: TREASURY_WALLET,
+        lamports: treasuryLamports,
+      }),
+      SystemProgram.transfer({
+        fromPubkey: buyerPk,
+        toPubkey: OPS_WALLET,
+        lamports: opsLamports,
+      })
+    );
+
+    const { blockhash: bh } = await connection.getLatestBlockhash("confirmed");
+    const preTx = new Transaction({ feePayer: buyerPk, recentBlockhash: bh }).add(...preIxs);
+
+    // get network fee for this exact message
+    let feeLamports = 0;
+    try {
+      const res = await connection.getFeeForMessage(preTx.compileMessage());
+      feeLamports = typeof res === "number" ? res : (res?.value ?? 0);
+    } catch {
+      // fallback: one sig base fee (safe underestimate for modern clusters)
+      feeLamports = 5000;
+    }
+
+    // small buffer to cover priority-fee variance etc.
+    const FEE_BUFFER_LAMPORTS = 300_000; // ~0.0003 SOL
+    const requiredLamports = totalLamports + ataRentNeeded + feeLamports + FEE_BUFFER_LAMPORTS;
+
+    if (buyerLamports < requiredLamports) {
+      const shortfall = (requiredLamports - buyerLamports) / 1e9;
+      const estFees = (ataRentNeeded + feeLamports + FEE_BUFFER_LAMPORTS) / 1e9;
+
+      // Friendly message showing the same preview + fee estimate
+      const msg =
+        `Not enough SOL to complete purchase.\n\n` +
+        `You entered: ${solNum} SOL\n` +
+        `Estimated fees (network + ${ataRentNeeded ? "ATA rent + " : ""}buffer): ~${estFees.toFixed(6)} SOL\n` +
+        `Total required: ${(requiredLamports / 1e9).toFixed(6)} SOL\n` +
+        `Your balance: ${(buyerLamports / 1e9).toFixed(6)} SOL\n` +
+        `Short by: ${shortfall.toFixed(6)} SOL.\n\n` +
+        `Tip: reduce SOL amount or top up to avoid Phantom’s red warning.`;
+      alert(msg);
+      setLoadingBuy(false);
+      return;
+    }
+
+    // --- Now open Phantom and send ONE transaction (ATA create if needed + transfers) ---
     if (!window?.solana) throw new Error("Phantom not found");
-    // ensure connection (silent first, then interactive)
     try {
       await window.solana.connect({ onlyIfTrusted: true }).catch(() => window.solana.connect());
     } catch {
       setLoadingBuy(false);
-      return; // user cancelled
+      return; // user canceled
     }
 
     const phantomPubkey = window.solana.publicKey;
     if (!phantomPubkey) throw new Error("Wallet not connected");
     const pkStr = phantomPubkey.toString();
-    if (pkStr !== wallet) setWallet(pkStr);
+    if (pkStr !== wallet) setWallet(pkStr); // keep local state in sync
 
-    const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
-
-    // --- amounts for your split ---
-    const totalLamports = Math.round(parseFloat(solInput) * 1e9);
-    const opsLamports = Math.floor(totalLamports * 0.01);
-    const treasuryLamports = totalLamports - opsLamports;
-
-    // --- check if buyer has TIX ATA; if not, we will create it in the SAME tx ---
-    const buyerAta = await getAssociatedTokenAddress(TIX_MINT, phantomPubkey);
-    const ataInfo = await connection.getAccountInfo(buyerAta, "confirmed");
-    const needsAta = !ataInfo;
-
-    // Rent needed to create an SPL token account (165 bytes)
-    const ataRentLamports = needsAta
-      ? await connection.getMinimumBalanceForRentExemption(165, "confirmed")
-      : 0;
-
-    // Build the exact transaction we'll send (so fee estimate is accurate)
-    const tx = new Transaction();
-
-    if (needsAta) {
-      tx.add(
+    // rebuild tx with Phantom's fresh blockhash + fee payer
+    const ixs = [];
+    if (!ataInfo) {
+      ixs.push(
         createAssociatedTokenAccountInstruction(
-          phantomPubkey,   // payer (user)
-          buyerAta,        // ATA to create
-          phantomPubkey,   // owner
+          phantomPubkey,
+          await getAssociatedTokenAddress(TIX_MINT, phantomPubkey),
+          phantomPubkey,
           TIX_MINT
         )
       );
     }
-
-    // Your SOL transfers
-    tx.add(
+    ixs.push(
       SystemProgram.transfer({
         fromPubkey: phantomPubkey,
         toPubkey: TREASURY_WALLET,
@@ -409,47 +476,20 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     );
 
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = blockhash;
-    tx.feePayer = phantomPubkey;
+    const tx = new Transaction({ feePayer: phantomPubkey, recentBlockhash: blockhash }).add(...ixs);
 
-    // ---- Preflight balance check: fee + transfers + ATA rent (if needed) ----
-    const [estimatedFeeLamports, balanceLamports] = await Promise.all([
-      connection.getFeeForMessage(tx.compileMessage(), "confirmed").then(r => r.value ?? 5000),
-      connection.getBalance(phantomPubkey, "confirmed"),
-    ]);
-
-    const SAFETY = 2000; // tiny cushion
-    const requiredLamports =
-      treasuryLamports + opsLamports + ataRentLamports + estimatedFeeLamports + SAFETY;
-
-    if (balanceLamports < requiredLamports) {
-      const maxSpendLamports =
-        Math.max(0, balanceLamports - (ataRentLamports + estimatedFeeLamports + SAFETY));
-      const maxSpendSOL = Math.floor((maxSpendLamports / 1e9) * 1e6) / 1e6; // 6dp
-      setLoadingBuy(false);
-      alert(
-        `Insufficient SOL to cover purchase, fees${needsAta ? " and ATA rent" : ""}.\n\n` +
-        `Your balance: ${(balanceLamports/1e9).toFixed(6)} SOL\n` +
-        `Estimated fee: ${(estimatedFeeLamports/1e9).toFixed(6)} SOL` +
-        (needsAta ? `\nATA rent: ${(ataRentLamports/1e9).toFixed(6)} SOL` : "") +
-        `\n\nMax spend right now: ~${maxSpendSOL} SOL`
-      );
-      return;
-    }
-
-    // ✅ Send through Phantom (single prompt)
     const sigRes = await window.solana.signAndSendTransaction(tx);
     const sig = typeof sigRes === "string" ? sigRes : sigRes.signature;
 
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
 
-    // backend sends TIX
+    // backend mints/credits TIX based on USD
     const res2 = await fetch("/api/buyTix", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         walletAddress: pkStr,
-        solAmount: parseFloat(solInput),
+        solAmount: solNum,
       }),
     });
     const data = await res2.json();
@@ -459,7 +499,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
     // refresh balance + credits
     try {
-      const lam = await connection.getBalance(phantomPubkey, "confirmed");
+      const lam = await connection.getBalance(phantomPubkey);
       setSolBalance(lam / 1e9);
     } catch {}
     await fetchCredits();
