@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
-import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction } from "@solana/spl-token";
 import useJackpotData from "../hooks/useJackpotData";
 import useCountdown from "../hooks/useCountdown";
 import CheckInButton from "./CheckInButton"; // ⬅️ added
@@ -9,7 +8,6 @@ const range = (n, start = 1) => Array.from({ length: n }, (_, i) => i + start);
 const MAIN_POOL = range(25, 1);
 const MOON_POOL = range(10, 1);
 const TIX_PER_TICKET = 10_000; // informational
-const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 
 // --- Buy flow constants (same as your BuyTix.jsx) ---
 const TREASURY_WALLET = new PublicKey("FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG");
@@ -364,25 +362,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
       const opsLamports = Math.floor(totalLamports * 0.01);
       const treasuryLamports = totalLamports - opsLamports;
 
-      // Build a SINGLE tx:
-      // 1) Create TIX ATA for buyer if missing (payer = user)
-      // 2) Transfer SOL to treasury and ops
-      const tx = new Transaction();
-
-      const buyerAta = await getAssociatedTokenAddress(TIX_MINT, phantomPubkey);
-      const ataInfo = await connection.getAccountInfo(buyerAta);
-      if (!ataInfo) {
-        tx.add(
-          createAssociatedTokenAccountInstruction(
-            phantomPubkey,   // payer (user pays rent)
-            buyerAta,        // ATA to create
-            phantomPubkey,   // owner
-            TIX_MINT
-          )
-        );
-      }
-
-      tx.add(
+      const tx = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: phantomPubkey,
           toPubkey: TREASURY_WALLET,
@@ -968,4 +948,3 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
     </div>
   );
 }
-
