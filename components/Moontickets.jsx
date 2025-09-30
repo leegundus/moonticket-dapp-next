@@ -359,19 +359,13 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
 
       const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL, "confirmed");
       const totalLamports = Math.floor(parseFloat(solInput) * 1e9);
-      const opsLamports = Math.floor(totalLamports * 0.01);
-      const treasuryLamports = totalLamports - opsLamports;
 
+      // ⚠️ Single transfer only (Phantom is less likely to warn on simple transfers)
       const tx = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: phantomPubkey,
           toPubkey: TREASURY_WALLET,
-          lamports: treasuryLamports,
-        }),
-        SystemProgram.transfer({
-          fromPubkey: phantomPubkey,
-          toPubkey: OPS_WALLET,
-          lamports: opsLamports,
+          lamports: totalLamports,
         })
       );
 
@@ -422,8 +416,7 @@ export default function Moontickets({ publicKey, tixBalance, onRefresh }) {
         {nums.map((n, i) => (
           <img key={i} src={`/numbers/yellow/${n}.png`} alt={`${n}`} style={imgStyle} />
         ))}
-        <img src={`/numbers/green/${t.moonball}.png`} alt={`MB ${t.moonball}`} style={{ ...imgStyle, marginLeft: 4 }} />
-      </span>
+        <img src={`/numbers/green/${t.moonball}.png`} alt={`MB ${t.moonball}`} style={{ ...imgStyle, marginLeft: 4 }} />      </span>
     );
   }
 
