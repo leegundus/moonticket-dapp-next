@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection, Transaction } from "@solana/web3.js";
+import { Connection, Transaction, PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 
 const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL);
 const rewardByDay = [50, 50, 100, 200, 300, 500, 1000];
+const TIX_MINT = new PublicKey(process.env.NEXT_PUBLIC_TIX_MINT);
 
 export default function CheckInButton({ streak, lastCheckin }) {
   const { publicKey, signTransaction } = useWallet();
@@ -22,6 +24,7 @@ export default function CheckInButton({ streak, lastCheckin }) {
 
   useEffect(() => {
     if (!lastCheckin || typeof streak !== "number") return;
+
     const now = new Date();
     const last = new Date(lastCheckin);
     const diff = now - last;
@@ -36,7 +39,49 @@ export default function CheckInButton({ streak, lastCheckin }) {
     setError("");
 
     try {
-      // Ask backend to build the tx (includes: optional user-paid ATA creation + TIX transfer from treasury)
+      // ---------- Preflight: make sure user can afford ATA rent (+fees) ----------
+      const balanceLamports = await connection.getBalance(publicKey);
+
+      // does the user already have a TIX ATA?
+      const userAta = await getAssociatedTokenAddress(TIX_MINT, publicKey);
+      const ataInfo = await connection.getAccountInfo(userAta);
+      const ataRentLamports = ataInfo
+        ? 0
+        : await connection.getMinimumBalanceForRentExemption(165); // SPL token account size
+
+      // estimate base fee for a small tx (1–2 sigs). Use empty message as baseline.
+      let feeLamports = 5000; // fallback
+      try {
+        const { blockhash } = await connection.getLatestBlockhash("confirmed");
+        const feeProbe = new Transaction({ feePayer: publicKey, recentBlockhash: blockhash });
+        const feeRes = await connection.getFeeForMessage(feeProbe.compileMessage());
+        feeLamports = typeof feeRes === "number" ? feeRes : (feeRes?.value ?? 5000);
+      } catch {}
+
+      // dynamic headroom so Phantom won't flag low-balance sign requests
+      const FEE_BUFFER_LAMPORTS = Math.max(300_000, Math.floor(balanceLamports * 0.10));   // ≥0.0003 SOL or 10%
+      const MIN_REMAINING_BALANCE_LAMPORTS = Math.max(200_000, Math.floor(balanceLamports * 0.05)); // ≥0.0002 SOL or 5%
+
+      const requiredLamports =
+        ataRentLamports + feeLamports + FEE_BUFFER_LAMPORTS + MIN_REMAINING_BALANCE_LAMPORTS;
+
+      if (balanceLamports < requiredLamports) {
+        const estFees =
+          (ataRentLamports + feeLamports + FEE_BUFFER_LAMPORTS + MIN_REMAINING_BALANCE_LAMPORTS) / 1e9;
+        const shortBy = (requiredLamports - balanceLamports) / 1e9;
+
+        alert(
+          `Not enough SOL to complete check-in.\n\n` +
+          `Estimated network/ATA fees: ~${estFees.toFixed(6)} SOL` +
+          `${ataRentLamports ? " (includes ATA rent)" : ""}\n` +
+          `Short by: ${shortBy.toFixed(6)} SOL.\n\n` +
+          `Top up a little SOL and try again.`
+        );
+        setLoading(false);
+        return;
+      }
+      // ---------------------------------------------------------------------------
+
       const res = await fetch("/api/checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -46,20 +91,16 @@ export default function CheckInButton({ streak, lastCheckin }) {
       const data = await res.json();
       if (res.status === 409 || data?.alreadyCheckedIn) {
         setError("You've already checked in today.");
-        setLoading(false);
         return;
       }
-      if (!res.ok || !data?.transaction) {
-        throw new Error(data?.error || "Check-in failed");
-      }
+      if (!res.ok) throw new Error(data.error || "Check-in failed");
 
-      // IMPORTANT: do not modify feePayer or recentBlockhash here.
       const tx = Transaction.from(Buffer.from(data.transaction, "base64"));
+      tx.feePayer = publicKey;
+      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
-      // User signs once (user is fee payer; also signs ATA create if needed)
       const signedTx = await signTransaction(tx);
 
-      // Send signed tx back to backend so treasury can co-sign and broadcast
       const finalizeRes = await fetch("/api/finalizeCheckin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -69,11 +110,8 @@ export default function CheckInButton({ streak, lastCheckin }) {
       });
 
       const finalizeData = await finalizeRes.json();
-      if (!finalizeRes.ok || !finalizeData?.success) {
-        throw new Error(finalizeData?.error || "Finalization failed");
-      }
+      if (!finalizeData.success) throw new Error(finalizeData.error || "Finalization failed");
 
-      // Mark streak/reward UI
       await fetch("/api/checkinConfirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,7 +127,7 @@ export default function CheckInButton({ streak, lastCheckin }) {
       setHighlighted(data.streak);
     } catch (err) {
       console.error("Check-in error:", err);
-      setError(err?.message || "Check-in failed. Try again.");
+      setError("Check-in failed. Try again.");
     } finally {
       setLoading(false);
     }
