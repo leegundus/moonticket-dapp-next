@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
@@ -17,9 +17,6 @@ const TREASURY_KEYPAIR = Keypair.fromSecretKey(
   bs58.decode(process.env.TREASURY_SECRET_KEY_BASE58)
 );
 const TREASURY_WALLET = TREASURY_KEYPAIR.publicKey;
-
-// ⬇️ OPS wallet for the 20% split (server-side)
-const OPS_WALLET = new PublicKey("nJmonUssRvbp85Nvdd9Bnxgh86Hf6BtKfu49RdcoYE9");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -132,37 +129,6 @@ export default async function handler(req, res) {
           });
         if (insErr) throw insErr;
       }
-    }
-
-    // ⬇️ Do the 80/20 split server-side from treasury (best-effort; won't fail the response)
-    try {
-      const totalLamports = Math.floor(Number(solAmount) * 1e9);
-      const opsLamports = Math.floor(totalLamports * 0.20);
-
-      if (opsLamports > 0) {
-        const splitTx = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: TREASURY_WALLET,
-            toPubkey: OPS_WALLET,
-            lamports: opsLamports,
-          })
-        );
-
-        const { blockhash: splitBlockhash, lastValidBlockHeight } =
-          await connection.getLatestBlockhash("confirmed");
-        splitTx.recentBlockhash = splitBlockhash;
-        splitTx.feePayer = TREASURY_WALLET;
-        splitTx.sign(TREASURY_KEYPAIR);
-
-        const splitSig = await connection.sendRawTransaction(splitTx.serialize());
-        await connection.confirmTransaction(
-          { signature: splitSig, blockhash: splitBlockhash, lastValidBlockHeight },
-          "confirmed"
-        );
-      }
-    } catch (splitErr) {
-      console.error("Post-buy 80/20 split failed (non-fatal):", splitErr);
-      // continue; do not throw — purchase is already successful
     }
 
     return res.status(200).json({
