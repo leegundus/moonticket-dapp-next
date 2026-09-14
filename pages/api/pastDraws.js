@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Server-only Supabase client. Do not fall back to the public anon key for
+// endpoints that aggregate private server-side tables such as prize_awards.
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-  // Use service role on the server so we can aggregate safely.
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 // Canonical keys the frontend expects (order doesn't matter here)
