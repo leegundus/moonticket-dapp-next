@@ -28,6 +28,9 @@ jobs:
       - name: Refresh package lock
         run: npm install --package-lock-only --ignore-scripts
 
+      - name: Apply safe npm audit fixes
+        run: npm audit fix --package-lock-only --ignore-scripts || true
+
       - name: Report dependency audit
         run: npm audit || true
 
