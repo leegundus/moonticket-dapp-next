@@ -1,0 +1,48 @@
+name: Mashers prototype checks
+
+on:
+  pull_request:
+    paths:
+      - "mashers-chain/**"
+      - "pages/mashers.js"
+      - "pages/api/mashers/**"
+      - "components/Navbar.jsx"
+      - "package.json"
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mashers-chain
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install contract dependencies
+        run: npm install
+      - name: Compile contracts
+        run: npm run compile
+
+  web:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_RPC_URL: "https://api.mainnet-beta.solana.com"
+      NEXT_PUBLIC_TIX_MINT: "11111111111111111111111111111111"
+      NEXT_PUBLIC_TIX_MINT_ADDRESS: "11111111111111111111111111111111"
+      NEXT_PUBLIC_TREASURY_WALLET: "11111111111111111111111111111111"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install web dependencies
+        run: npm install
+      - name: Build Next.js app
+        run: npm run build

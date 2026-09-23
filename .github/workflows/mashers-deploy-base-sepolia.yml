@@ -1,0 +1,41 @@
+name: Deploy Mashers to Base Sepolia
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: mashers-chain
+    env:
+      DEPLOYER_PRIVATE_KEY: ${{ secrets.MASHERS_TESTNET_PRIVATE_KEY }}
+      BASE_SEPOLIA_RPC_URL: "https://sepolia.base.org"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify testnet secret exists
+        run: |
+          if [ -z "$DEPLOYER_PRIVATE_KEY" ]; then
+            echo "Missing GitHub Actions secret: MASHERS_TESTNET_PRIVATE_KEY"
+            exit 1
+          fi
+
+      - name: Install contract dependencies
+        run: npm install
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Deploy prototype
+        run: npm run deploy:base-sepolia
