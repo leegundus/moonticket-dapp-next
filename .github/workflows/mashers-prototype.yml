@@ -1,0 +1,43 @@
+name: Mashers prototype checks
+
+on:
+  pull_request:
+    paths:
+      - "mashers-chain/**"
+      - "pages/mashers.js"
+      - "pages/api/mashers/**"
+      - "components/Navbar.jsx"
+      - "package.json"
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mashers-chain
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install contract dependencies
+        run: npm install
+      - name: Compile contracts
+        run: npm run compile
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install web dependencies
+        run: npm install
+      - name: Build Next.js app
+        run: npm run build
