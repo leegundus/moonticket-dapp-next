@@ -30,6 +30,11 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_RPC_URL: "https://api.mainnet-beta.solana.com"
+      NEXT_PUBLIC_TIX_MINT: "11111111111111111111111111111111"
+      NEXT_PUBLIC_TIX_MINT_ADDRESS: "11111111111111111111111111111111"
+      NEXT_PUBLIC_TREASURY_WALLET: "11111111111111111111111111111111"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
