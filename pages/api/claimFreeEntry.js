@@ -1,15 +1,56 @@
-import { createClient } from "@supabase/supabase-js";
-import { PublicKey } from "@solana/web3.js";
+const TIME_ZONE = "America/Chicago";
 
-function getSupabase() {
+function getSupabaseConfig() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
   if (!url || !serviceRoleKey) return null;
-  return createClient(url, serviceRoleKey);
+  return { url: url.replace(/\/$/, ""), serviceRoleKey };
 }
 
-const TIME_ZONE = "America/Chicago";
+function isValidSolanaAddress(value) {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
+}
+
+async function supabaseRequest(path, options = {}) {
+  const config = getSupabaseConfig();
+  if (!config) {
+    const err = new Error("MoonTicket preview database connection is not configured.");
+    err.code = "SUPABASE_PREVIEW_ENV_MISSING";
+    throw err;
+  }
+
+  const response = await fetch(config.url + "/rest/v1/" + path, {
+    ...options,
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: "Bearer " + config.serviceRoleKey,
+      Accept: "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  const text = await response.text();
+  let body = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+
+  if (!response.ok) {
+    const err = new Error(
+      (body && typeof body === "object" && (body.message || body.error)) ||
+        "Supabase request failed"
+    );
+    err.status = response.status;
+    err.details = body;
+    throw err;
+  }
+
+  return body;
+}
 
 function zonedParts(date) {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -42,8 +83,7 @@ function zonedParts(date) {
 
 function timeZoneOffsetMs(date) {
   const p = zonedParts(date);
-  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-  return asUtc - date.getTime();
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - date.getTime();
 }
 
 function localCentralToUtc(year, month, day, hour, minute) {
@@ -59,11 +99,7 @@ function localCentralToUtc(year, month, day, hour, minute) {
 
 function addCalendarDays(year, month, day, amount) {
   const d = new Date(Date.UTC(year, month - 1, day + amount, 12, 0, 0));
-  return {
-    year: d.getUTCFullYear(),
-    month: d.getUTCMonth() + 1,
-    day: d.getUTCDate(),
-  };
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
 }
 
 function getDrawWindow(now = new Date()) {
@@ -71,9 +107,7 @@ function getDrawWindow(now = new Date()) {
   const weekdayIndex = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
   let daysBack = weekdayIndex[p.weekday] ?? 0;
 
-  if (p.weekday === "Mon" && p.hour < 22) {
-    daysBack += 7;
-  }
+  if (p.weekday === "Mon" && p.hour < 22) daysBack += 7;
 
   const startDate = addCalendarDays(p.year, p.month, p.day, -daysBack);
   const endDate = addCalendarDays(startDate.year, startDate.month, startDate.day, 7);
@@ -90,43 +124,25 @@ export default async function handler(req, res) {
   }
 
   const wallet = String(req.body?.wallet || "").trim();
-
-  if (!wallet) {
-    return res.status(400).json({ error: "Missing wallet" });
-  }
-
-  try {
-    new PublicKey(wallet);
-  } catch {
+  if (!wallet) return res.status(400).json({ error: "Missing wallet" });
+  if (!isValidSolanaAddress(wallet)) {
     return res.status(400).json({ error: "Invalid Solana wallet" });
   }
 
   try {
-    const supabase = getSupabase();
-    if (!supabase) {
-      return res.status(503).json({
-        error: "MoonTicket preview database connection is not configured.",
-        code: "SUPABASE_PREVIEW_ENV_MISSING",
-      });
-    }
-
     const { start, end } = getDrawWindow();
+    const query = new URLSearchParams({
+      select: "id",
+      wallet: "eq." + wallet,
+      entry_type: "eq.free",
+      created_at: "gte." + start.toISOString(),
+      limit: "1",
+    });
+    query.append("created_at", "lt." + end.toISOString());
 
-    const { data: existing, error: selectError } = await supabase
-      .from("entries")
-      .select("id")
-      .eq("wallet", wallet)
-      .eq("entry_type", "free")
-      .gte("created_at", start.toISOString())
-      .lt("created_at", end.toISOString())
-      .limit(1);
+    const existing = await supabaseRequest("entries?" + query.toString());
 
-    if (selectError) {
-      console.error("Free entry lookup failed:", selectError);
-      return res.status(500).json({ error: "Could not verify weekly entry" });
-    }
-
-    if (existing?.length) {
+    if (Array.isArray(existing) && existing.length) {
       return res.status(409).json({
         success: false,
         alreadyClaimed: true,
@@ -134,20 +150,22 @@ export default async function handler(req, res) {
       });
     }
 
-    const { error: insertError } = await supabase.from("entries").insert([
-      {
-        wallet,
-        entry_type: "free",
-        entries: 1,
-        tix_amount: 0,
-        is_bonus: false,
+    await supabaseRequest("entries", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
       },
-    ]);
-
-    if (insertError) {
-      console.error("Free entry insert failed:", insertError);
-      return res.status(500).json({ error: "Could not save weekly entry" });
-    }
+      body: JSON.stringify([
+        {
+          wallet,
+          entry_type: "free",
+          entries: 1,
+          tix_amount: 0,
+          is_bonus: false,
+        },
+      ]),
+    });
 
     return res.status(200).json({
       success: true,
@@ -158,7 +176,18 @@ export default async function handler(req, res) {
       },
     });
   } catch (err) {
-    console.error("claimFreeEntry error:", err);
-    return res.status(500).json({ error: "Unexpected server error" });
+    console.error("claimFreeEntry error:", err?.message, err?.details || "");
+
+    if (err?.code === "SUPABASE_PREVIEW_ENV_MISSING") {
+      return res.status(503).json({
+        error: err.message,
+        code: err.code,
+      });
+    }
+
+    return res.status(500).json({
+      error: "Could not save your weekly entry.",
+      code: "ENTRY_API_ERROR",
+    });
   }
 }
