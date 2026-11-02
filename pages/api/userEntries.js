@@ -1,15 +1,54 @@
-import { createClient } from "@supabase/supabase-js";
-import { PublicKey } from "@solana/web3.js";
+const TIME_ZONE = "America/Chicago";
 
-function getSupabase() {
+function getSupabaseConfig() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
   if (!url || !serviceRoleKey) return null;
-  return createClient(url, serviceRoleKey);
+  return { url: url.replace(/\/$/, ""), serviceRoleKey };
 }
 
-const TIME_ZONE = "America/Chicago";
+function isValidSolanaAddress(value) {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
+}
+
+async function supabaseRequest(path) {
+  const config = getSupabaseConfig();
+  if (!config) {
+    const err = new Error("MoonTicket preview database connection is not configured.");
+    err.code = "SUPABASE_PREVIEW_ENV_MISSING";
+    throw err;
+  }
+
+  const response = await fetch(config.url + "/rest/v1/" + path, {
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: "Bearer " + config.serviceRoleKey,
+      Accept: "application/json",
+    },
+  });
+
+  const text = await response.text();
+  let body = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+
+  if (!response.ok) {
+    const err = new Error(
+      (body && typeof body === "object" && (body.message || body.error)) ||
+        "Supabase request failed"
+    );
+    err.status = response.status;
+    err.details = body;
+    throw err;
+  }
+
+  return body;
+}
 
 function zonedParts(date) {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -48,11 +87,9 @@ function timeZoneOffsetMs(date) {
 function localCentralToUtc(year, month, day, hour, minute) {
   const wallClock = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
   let guess = new Date(wallClock);
-
   for (let i = 0; i < 3; i += 1) {
     guess = new Date(wallClock - timeZoneOffsetMs(guess));
   }
-
   return guess;
 }
 
@@ -66,9 +103,7 @@ function getDrawWindow(now = new Date()) {
   const weekdayIndex = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
   let daysBack = weekdayIndex[p.weekday] ?? 0;
 
-  if (p.weekday === "Mon" && p.hour < 22) {
-    daysBack += 7;
-  }
+  if (p.weekday === "Mon" && p.hour < 22) daysBack += 7;
 
   const startDate = addCalendarDays(p.year, p.month, p.day, -daysBack);
   const endDate = addCalendarDays(startDate.year, startDate.month, startDate.day, 7);
@@ -85,43 +120,23 @@ export default async function handler(req, res) {
   }
 
   const wallet = String(req.query?.wallet || "").trim();
-
-  if (!wallet) {
-    return res.status(400).json({ error: "Missing wallet parameter" });
-  }
-
-  try {
-    new PublicKey(wallet);
-  } catch {
+  if (!wallet) return res.status(400).json({ error: "Missing wallet parameter" });
+  if (!isValidSolanaAddress(wallet)) {
     return res.status(400).json({ error: "Invalid Solana wallet" });
   }
 
   try {
-    const supabase = getSupabase();
-    if (!supabase) {
-      return res.status(503).json({
-        error: "MoonTicket preview database connection is not configured.",
-        code: "SUPABASE_PREVIEW_ENV_MISSING",
-      });
-    }
-
     const { start, end } = getDrawWindow();
+    const query = new URLSearchParams({
+      select: "entries",
+      wallet: "eq." + wallet,
+      entry_type: "eq.free",
+      created_at: "gte." + start.toISOString(),
+    });
+    query.append("created_at", "lt." + end.toISOString());
 
-    const { data, error } = await supabase
-      .from("entries")
-      .select("entry_type,entries,created_at")
-      .eq("wallet", wallet)
-      .eq("entry_type", "free")
-      .gte("created_at", start.toISOString())
-      .lt("created_at", end.toISOString());
-
-    if (error) {
-      console.error("Weekly entry lookup failed:", error);
-      return res.status(500).json({ error: "Failed to fetch weekly entry" });
-    }
-
-    const totalFree = (data || []).reduce((sum, row) => sum + Number(row.entries || 0), 0);
-    const freeEntries = totalFree > 0 ? 1 : 0;
+    const rows = await supabaseRequest("entries?" + query.toString());
+    const freeEntries = Array.isArray(rows) && rows.length > 0 ? 1 : 0;
 
     return res.status(200).json({
       freeEntries,
@@ -133,7 +148,15 @@ export default async function handler(req, res) {
       },
     });
   } catch (err) {
-    console.error("userEntries error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("userEntries error:", err?.message, err?.details || "");
+
+    if (err?.code === "SUPABASE_PREVIEW_ENV_MISSING") {
+      return res.status(503).json({ error: err.message, code: err.code });
+    }
+
+    return res.status(500).json({
+      error: "Failed to fetch weekly entry.",
+      code: "ENTRY_LOOKUP_ERROR",
+    });
   }
 }
