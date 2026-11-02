@@ -26,7 +26,7 @@ export default function Home() {
           href="/Moontickets"
           className="bg-yellow-400 text-black font-bold rounded-lg px-6 py-3 text-center"
         >
-          Enter This Week's Drawing
+          Enter This Week&apos;s Drawing
         </Link>
         <Link
           href="/past"
