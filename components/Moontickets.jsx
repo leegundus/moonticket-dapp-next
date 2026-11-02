@@ -38,7 +38,17 @@ export default function Moontickets() {
         body: JSON.stringify({ wallet }),
       });
 
-      const data = await res.json();
+      const raw = await res.text();
+      let data = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = null;
+      }
+
+      if (!data) {
+        throw new Error("The MoonTicket entry service returned an invalid response. Please refresh and try again.");
+      }
 
       if (res.status === 409 || data?.alreadyClaimed) {
         setClaimedNow(true);
@@ -47,6 +57,9 @@ export default function Moontickets() {
       }
 
       if (!res.ok || !data?.success) {
+        if (data?.code === "SUPABASE_PREVIEW_ENV_MISSING") {
+          throw new Error("The V2 preview is not connected to the MoonTicket database yet.");
+        }
         throw new Error(data?.error || "Could not claim your weekly entry.");
       }
 
