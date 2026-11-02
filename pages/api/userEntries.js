@@ -1,10 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { PublicKey } from "@solana/web3.js";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+function getSupabase() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceRoleKey) return null;
+  return createClient(url, serviceRoleKey);
+}
 
 const TIME_ZONE = "America/Chicago";
 
@@ -94,6 +97,14 @@ export default async function handler(req, res) {
   }
 
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return res.status(503).json({
+        error: "MoonTicket preview database connection is not configured.",
+        code: "SUPABASE_PREVIEW_ENV_MISSING",
+      });
+    }
+
     const { start, end } = getDrawWindow();
 
     const { data, error } = await supabase
