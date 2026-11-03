@@ -1,9 +1,14 @@
 import Link from "next/link";
 import WalletConnect from "./WalletConnect";
 import { useEffect, useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+const OWNER = "FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const { publicKey } = useWallet();
+  const isOwner = publicKey?.toBase58() === OWNER;
 
   useEffect(() => {
     document.body.style.overflow = isOpen ? "hidden" : "auto";
@@ -24,8 +29,10 @@ const Navbar = () => {
         <div className="hidden md:flex space-x-6">
           <Link href="/">Home</Link>
           <Link href="/Moontickets">Weekly Draw</Link>
+          <Link href="/buytix">Buy TIX</Link>
           <Link href="/past">Winners</Link>
           <Link href="/whitepaper">How It Works</Link>
+          {isOwner && <Link href="/admin">Admin</Link>}
         </div>
 
         <div className="flex items-center space-x-4">
@@ -38,7 +45,7 @@ const Navbar = () => {
 
           <WalletConnect />
           <p className="text-xs text-yellow-300 mt-1 text-center hidden md:block">
-            Phantom Wallet
+            Solana Wallet
           </p>
 
           <div className="md:hidden">
@@ -59,8 +66,10 @@ const Navbar = () => {
         <div className="fixed inset-0 top-0 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center justify-center space-y-6 z-40 md:hidden pt-32">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/Moontickets" onClick={() => setIsOpen(false)}>Weekly Draw</Link>
+          <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy TIX</Link>
           <Link href="/past" onClick={() => setIsOpen(false)}>Winners</Link>
           <Link href="/whitepaper" onClick={() => setIsOpen(false)}>How It Works</Link>
+          {isOwner && <Link href="/admin" onClick={() => setIsOpen(false)}>Admin</Link>}
         </div>
       )}
     </>
