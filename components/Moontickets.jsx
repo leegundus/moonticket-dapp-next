@@ -18,7 +18,7 @@ export default function Moontickets() {
   const alreadyEntered = claimedNow || (entryData?.freeEntries || 0) > 0;
 
   const shareText = encodeURIComponent(
-    "I entered this week's free MoonTicket SOL drawing. One guaranteed winner every week. No purchase necessary. https://moonticket.io @moonticket__io"
+    "I entered this week's free MoonTicket drawing. One guaranteed winner every week. No purchase necessary. https://moonticket.io @moonticket__io"
   );
   const shareUrl = "https://x.com/intent/post?text=" + shareText;
 
@@ -130,9 +130,9 @@ export default function Moontickets() {
 
       <div className="mt-10 text-center px-4">
         <p className="text-xs text-yellow-300/80 max-w-2xl mx-auto leading-relaxed">
-          MoonTicket V2 preview. No purchase necessary to enter or win. Buying or holding TIX
-          does not improve drawing odds. Final eligibility requirements and official rules will
-          be published before public relaunch. Void where prohibited.
+          No purchase necessary to enter or win. Buying or holding TIX does not improve drawing
+          odds. Final eligibility requirements and official rules will be published before the
+          first public drawing. Void where prohibited.
         </p>
       </div>
     </div>
