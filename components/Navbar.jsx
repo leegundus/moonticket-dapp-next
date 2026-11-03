@@ -25,7 +25,7 @@ const Navbar = () => {
           <Link href="/">Home</Link>
           <Link href="/Moontickets">Weekly Draw</Link>
           <Link href="/past">Winners</Link>
-          <Link href="/whitepaper">V2 Overview</Link>
+          <Link href="/whitepaper">How It Works</Link>
         </div>
 
         <div className="flex items-center space-x-4">
@@ -60,7 +60,7 @@ const Navbar = () => {
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/Moontickets" onClick={() => setIsOpen(false)}>Weekly Draw</Link>
           <Link href="/past" onClick={() => setIsOpen(false)}>Winners</Link>
-          <Link href="/whitepaper" onClick={() => setIsOpen(false)}>V2 Overview</Link>
+          <Link href="/whitepaper" onClick={() => setIsOpen(false)}>How It Works</Link>
         </div>
       )}
     </>
