@@ -12,13 +12,10 @@ export default function Home() {
       <div className="max-w-3xl text-center mt-8">
         <h1 className="text-3xl md:text-4xl font-bold">One Free Entry. One Winner. Every Week.</h1>
         <p className="text-lg mt-5 leading-relaxed">
-          MoonTicket is a weekly SOL prize drawing on Solana. Connect your wallet, claim your
-          free weekly entry, and come back for the Monday night drawing.
+          MoonTicket is a weekly prize drawing on Solana. Connect your Phantom wallet,
+          claim one free entry, and come back for the Monday night drawing.
         </p>
         <p className="text-lg mt-4 font-semibold">No purchase necessary.</p>
-        <p className="mt-2">
-          Buying or holding TIX does not increase your chance of winning.
-        </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 mt-10">
@@ -36,18 +33,15 @@ export default function Home() {
         </Link>
       </div>
 
-      <div className="max-w-3xl mt-12 border border-yellow-400/30 rounded-xl p-6">
-        <h2 className="text-2xl font-bold text-center">Where TIX Fits</h2>
-        <p className="mt-4 leading-relaxed text-center">
-          TIX remains the MoonTicket ecosystem token. The V2 relaunch will reconnect TIX to real
-          Solana market trading, liquidity, sponsorships, and jackpot funding without requiring
-          TIX ownership for entry.
+      <div className="max-w-3xl mt-12 border border-yellow-400/30 rounded-xl p-6 text-center">
+        <h2 className="text-2xl font-bold">How It Works</h2>
+        <p className="mt-4 leading-relaxed">
+          Each eligible wallet can claim one free entry per weekly drawing. Entries close
+          for the drawing at Monday 10:00 PM Central Time. One winner is selected and the
+          result and payout information are published for transparency.
         </p>
-        <p className="mt-4 text-center text-sm">
-          TIX Mint: 8e9Mqnczw7MHjdjYaRe3tppbXgRdT6bqTyR3n8b4C4Ek
-        </p>
-        <div className="text-center mt-5">
-          <Link href="/whitepaper" className="underline font-semibold">Read the V2 overview</Link>
+        <div className="mt-5">
+          <Link href="/whitepaper" className="underline font-semibold">See drawing details</Link>
         </div>
       </div>
     </div>
