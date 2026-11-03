@@ -1,0 +1,31 @@
+{
+  "name": "MoonTicket",
+  "symbol": "TIX",
+  "description": "TIX is the utility token of MoonTicket, a Solana-based weekly prize platform. TIX can be traded on Solana and may be included in MoonTicket prize bundles alongside SOL, NFTs, and other crypto assets. MoonTicket offers eligible users one free entry into its weekly drawing. Buying or holding TIX does not increase drawing odds.",
+  "image": "https://www.moonticket.io/moonticket-logo.png",
+  "external_url": "https://www.moonticket.io",
+  "attributes": [
+    {
+      "trait_type": "Network",
+      "value": "Solana"
+    },
+    {
+      "trait_type": "Platform",
+      "value": "MoonTicket"
+    }
+  ],
+  "properties": {
+    "category": "token",
+    "files": [
+      {
+        "uri": "https://www.moonticket.io/moonticket-logo.png",
+        "type": "image/png"
+      }
+    ]
+  },
+  "extensions": {
+    "website": "https://www.moonticket.io",
+    "twitter": "https://x.com/Moonticket__io",
+    "telegram": "https://t.me/moonticket_chat"
+  }
+}
