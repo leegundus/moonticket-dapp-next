@@ -1,87 +1,38 @@
-import { createClient } from "@supabase/supabase-js";
+import { getDrawWindow } from "../../lib/weeklyDraw";
+import { supabaseRest } from "../../lib/supabaseRestServer";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+function validWallet(value) {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
+}
 
 export default async function handler(req, res) {
-  const { wallet } = req.query;
+  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
-  if (!wallet) {
-    return res.status(400).json({ error: "Missing wallet parameter" });
-  }
+  const wallet = String(req.query?.wallet || "").trim();
+  if (!wallet) return res.status(400).json({ error: "Missing wallet parameter" });
+  if (!validWallet(wallet)) return res.status(400).json({ error: "Invalid Solana wallet" });
 
   try {
-    // Get most recent moon draw
-    const { data: draws, error: drawError } = await supabase
-      .from("draws")
-      .select("draw_date")
-      .eq("draw_type", "moon")
-      .order("draw_date", { ascending: false })
-      .limit(1);
+    const { start, end, drawKey } = getDrawWindow();
+    const q = new URLSearchParams({
+      select: "id",
+      wallet: "eq." + wallet,
+      entry_type: "eq.free",
+      weekly_draw_key: "eq." + drawKey,
+      limit: "1",
+    });
+    const rows = await supabaseRest("entries?" + q.toString());
+    const freeEntries = Array.isArray(rows) && rows.length ? 1 : 0;
 
-    if (drawError) {
-      console.error("Draw lookup failed:", drawError.message);
-      return res.status(500).json({ error: "Failed to fetch latest draw" });
-    }
-
-    const lastDrawDate = draws?.[0]?.draw_date;
-    const since = lastDrawDate ? new Date(lastDrawDate) : null;
-
-    console.log("=== User Entry Query ===");
-    console.log("Wallet:", wallet);
-    console.log("Since:", since?.toISOString() || "All time (no draws yet)");
-    console.log("========================");
-
-    // Fetch all entries for wallet
-    const { data: allRows, error: allError } = await supabase
-      .from("entries")
-      .select("*")
-      .eq("wallet", wallet);
-
-    if (allError) {
-      console.error("Supabase query error:", allError.message);
-      return res.status(500).json({ error: "Failed to fetch raw data" });
-    }
-
-    // Filter by draw timestamp
-    const filtered = since
-      ? allRows.filter(row => new Date(row.created_at) >= since)
-      : allRows;
-
-    let weeklyTix = 0;
-    let purchaseEntries = 0;
-    let tweetEntries = 0;
-    let promoEntries = 0;
-
-    for (const entry of filtered) {
-      if (entry.entry_type === "purchase") {
-        weeklyTix += entry.tix_amount;
-        purchaseEntries += entry.entries;
-      } else if (entry.entry_type === "tweet") {
-        tweetEntries += entry.entries;
-      } else if (entry.entry_type === "promo") {
-        promoEntries += entry.entries;
-      }
-    }
-
-    const weeklyEntries = purchaseEntries + tweetEntries + promoEntries;
-
-    res.status(200).json({
-      weeklyTix,
-      purchaseEntries,
-      tweetEntries,
-      promoEntries,
-      weeklyEntries,
-      debug: {
-        drawSince: since?.toISOString() || null,
-        filtered,
-        raw: allRows
-      }
+    return res.status(200).json({
+      freeEntries,
+      weeklyEntries: freeEntries,
+      hasFreeEntry: freeEntries === 1,
+      drawKey,
+      drawWindow: { start: start.toISOString(), end: end.toISOString() },
     });
   } catch (err) {
-    console.error("API error:", err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("userEntries error:", err?.message, err?.details || "");
+    return res.status(500).json({ error: "Failed to fetch weekly entry." });
   }
 }

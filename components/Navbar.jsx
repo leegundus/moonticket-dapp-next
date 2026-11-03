@@ -1,35 +1,41 @@
 import Link from "next/link";
 import WalletConnect from "./WalletConnect";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+const OWNER = "FrAvtjXo5JCsWrjcphvWCGQDrXX8PuEbN2qu2SGdvurG";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const { publicKey } = useWallet();
+  const isOwner = publicKey?.toBase58() === OWNER;
 
   useEffect(() => {
     document.body.style.overflow = isOpen ? "hidden" : "auto";
+    return () => {
+      document.body.style.overflow = "auto";
+    };
   }, [isOpen]);
 
   return (
     <>
       <nav className="fixed top-0 left-0 w-full bg-black text-yellow-400 px-6 py-1 flex items-center justify-between border-b border-yellow-400 z-50">
-        {/* Logo */}
         <div className="w-32">
           <Link href="/">
-            <img src="/moonticket-logo.png" alt="Moonticket Logo" className="w-full h-auto" />
+            <img src="/moonticket-logo.png" alt="MoonTicket Logo" className="w-full h-auto" />
           </Link>
         </div>
 
-        {/* Desktop Nav */}
         <div className="hidden md:flex space-x-6">
           <Link href="/">Home</Link>
-          <Link href="/Moontickets">Moontickets</Link>
+          <Link href="/Moontickets">Weekly Draw</Link>
+          <Link href="/buytix">Buy TIX</Link>
           <Link href="/past">Winners</Link>
-          <Link href="/whitepaper">Whitepaper</Link>
+          <Link href="/whitepaper">How It Works</Link>
+          {isOwner && <Link href="/admin">Admin</Link>}
         </div>
 
-        {/* Wallet + Icons + Hamburger */}
         <div className="flex items-center space-x-4">
-          {/* Social Icons */}
           <a href="https://x.com/moonticket__io" target="_blank" rel="noopener noreferrer" aria-label="X">
             <img src="/logo-white.png" alt="X Icon" className="w-5 h-5" />
           </a>
@@ -39,7 +45,7 @@ const Navbar = () => {
 
           <WalletConnect />
           <p className="text-xs text-yellow-300 mt-1 text-center hidden md:block">
-            Only <strong>Phantom Wallet</strong> is supported
+            Solana Wallet
           </p>
 
           <div className="md:hidden">
@@ -56,13 +62,14 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Mobile Dropdown */}
       {isOpen && (
         <div className="fixed inset-0 top-0 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center justify-center space-y-6 z-40 md:hidden pt-32">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
-          <Link href="/Moontickets" onClick={() => setIsOpen(false)}>Moontickets</Link>
+          <Link href="/Moontickets" onClick={() => setIsOpen(false)}>Weekly Draw</Link>
+          <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy TIX</Link>
           <Link href="/past" onClick={() => setIsOpen(false)}>Winners</Link>
-          <Link href="/whitepaper" onClick={() => setIsOpen(false)}>Whitepaper</Link>
+          <Link href="/whitepaper" onClick={() => setIsOpen(false)}>How It Works</Link>
+          {isOwner && <Link href="/admin" onClick={() => setIsOpen(false)}>Admin</Link>}
         </div>
       )}
     </>

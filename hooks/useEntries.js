@@ -1,48 +1,32 @@
-import { useState, useEffect } from "react";
-
-console.log("useEntries hook loaded");
+import { useEffect, useState } from "react";
 
 export default function useEntries(publicKey) {
   const [entries, setEntries] = useState(null);
 
   useEffect(() => {
     if (!publicKey) {
-      console.log("useEntries: Wallet not connected — skipping fetch");
+      setEntries(null);
       return;
     }
 
-    console.log("useEntries: Wallet connected!", publicKey.toBase58());
+    let cancelled = false;
 
-    const fetchEntries = async () => {
+    async function load() {
       try {
-        const res = await fetch(`/api/userEntries?wallet=${publicKey.toBase58()}`);
+        const res = await fetch("/api/userEntries?wallet=" + publicKey.toBase58());
         const data = await res.json();
-
-        if (!res.ok) {
-          console.error("Error fetching entries:", data.error);
-          return;
-        }
-
-        console.log("Supabase data received:", data);
-
-        const purchaseEntries = data.purchaseEntries || 0;
-        const tweetEntries = data.tweetEntries || 0;
-        const promoEntries = data.promoEntries || 0;
-
-        setEntries({
-          weeklyTix: data.weeklyTix,
-          purchaseEntries,
-          tweetEntries,
-          promoEntries,
-          weeklyEntries: purchaseEntries + tweetEntries + promoEntries,
-        });
+        if (!res.ok) throw new Error(data?.error || "Failed to load entries");
+        if (!cancelled) setEntries(data);
       } catch (err) {
-        console.error("Failed to load user entries:", err.message);
+        console.error("Failed to load weekly entry:", err);
+        if (!cancelled) setEntries({ freeEntries: 0, weeklyEntries: 0, hasFreeEntry: false });
       }
-    };
+    }
 
-    console.log("Fetching from /api/userEntries with wallet:", publicKey.toBase58());
-    fetchEntries();
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [publicKey]);
 
   return entries;

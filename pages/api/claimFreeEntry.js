@@ -1,86 +1,74 @@
-import { createClient } from '@supabase/supabase-js';
+import { getDrawWindow } from "../../lib/weeklyDraw";
+import { ensureWeeklyDraw, supabaseRest } from "../../lib/supabaseRestServer";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  let { wallet, isBonus = false } = req.body;
-
-  if (!wallet) {
-    return res.status(400).json({ error: 'Missing wallet' });
-  }
-
-  // Ensure isBonus is a real boolean
-  isBonus = typeof isBonus === 'string' ? isBonus === 'true' : !!isBonus;
-
-  console.log("Received payload:", { wallet, isBonus });
-
-  try {
-    const { start, end } = getDrawWindow();
-    console.log("Checking between:", start.toISOString(), "and", end.toISOString());
-
-    const { data: existing, error: selectError } = await supabase
-      .from('entries')
-      .select('*')
-      .eq('wallet', wallet)
-      .eq('entry_type', 'tweet')
-      .eq('is_bonus', isBonus)
-      .gte('created_at', start.toISOString())
-      .lt('created_at', end.toISOString());
-
-    if (selectError) {
-      console.error("Supabase select error:", selectError);
-      return res.status(500).json({ error: 'Database error (select)' });
-    }
-
-    if (existing.length > 0) {
-      console.log("Entry already exists for this wallet + is_bonus value.");
-      return res.status(400).json({ error: 'Already claimed this entry type this week' });
-    }
-
-    const { error: insertError } = await supabase.from('entries').insert([
-      {
-        wallet,
-        entry_type: 'tweet',
-        entries: 1,
-        tix_amount: 1,
-        is_bonus: isBonus,
-      },
-    ]);
-
-    if (insertError) {
-      console.error("Supabase insert error:", insertError);
-      return res.status(500).json({ error: 'Database error (insert)' });
-    }
-
-    return res.status(200).json({ success: true });
-  } catch (err) {
-    console.error("Unhandled exception:", err);
-    return res.status(500).json({ error: 'Unexpected server error' });
-  }
+function validWallet(value) {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
 }
 
-// === Get draw window from last Monday 10pm CT to next Monday 10pm CT
-function getDrawWindow() {
-  const now = new Date();
-  const day = now.getUTCDay(); // Sunday = 0
-  const date = now.getUTCDate();
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const daysSinceMonday = (day + 6) % 7;
+  const wallet = String(req.body?.wallet || "").trim();
+  if (!wallet) return res.status(400).json({ error: "Missing wallet" });
+  if (!validWallet(wallet)) return res.status(400).json({ error: "Invalid Solana wallet" });
 
-  const start = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    date - daysSinceMonday,
-    3, 0, 0, 0 // Monday 10pm CT = Tuesday 3am UTC
-  ));
+  try {
+    const { start, end, drawKey } = getDrawWindow();
+    await ensureWeeklyDraw({ drawKey, drawDate: end.toISOString() });
 
-  const end = new Date(start);
-  end.setUTCDate(start.getUTCDate() + 7);
+    const q = new URLSearchParams({
+      select: "id",
+      wallet: "eq." + wallet,
+      entry_type: "eq.free",
+      weekly_draw_key: "eq." + drawKey,
+      limit: "1",
+    });
+    const existing = await supabaseRest("entries?" + q.toString());
 
-  return { start, end };
+    if (Array.isArray(existing) && existing.length) {
+      return res.status(409).json({
+        success: false,
+        alreadyClaimed: true,
+        error: "You are already entered in this week's drawing.",
+      });
+    }
+
+    try {
+      await supabaseRest("entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify([{
+          wallet,
+          entry_type: "free",
+          entries: 1,
+          tix_amount: 0,
+          is_bonus: false,
+          draw_date: end.toISOString(),
+          weekly_draw_key: drawKey,
+        }]),
+      });
+    } catch (err) {
+      if (err.status === 409) {
+        return res.status(409).json({
+          success: false,
+          alreadyClaimed: true,
+          error: "You are already entered in this week's drawing.",
+        });
+      }
+      throw err;
+    }
+
+    return res.status(200).json({
+      success: true,
+      entries: 1,
+      drawKey,
+      drawWindow: { start: start.toISOString(), end: end.toISOString() },
+    });
+  } catch (err) {
+    console.error("claimFreeEntry error:", err?.message, err?.details || "");
+    return res.status(500).json({
+      error: "Could not save your weekly entry.",
+      code: "ENTRY_API_ERROR",
+    });
+  }
 }

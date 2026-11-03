@@ -1,8 +1,12 @@
-import dynamic from "next/dynamic";
-import dynamicWalletProvider from "../wallet/WalletProvider";
+export default function RetiredPage() {
+  return null;
+}
 
-const Jackpot = dynamic(() => import("../components/Jackpot"), { ssr: false });
-
-export default function JackpotPage() {
-  return dynamicWalletProvider(<Jackpot />);
+export function getServerSideProps() {
+  return {
+    redirect: {
+      destination: "/Moontickets",
+      permanent: false,
+    },
+  };
 }
