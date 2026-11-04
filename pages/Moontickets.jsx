@@ -1,4 +1,5 @@
 import dynamic from "next/dynamic";
+import MoonTicketBanner from "../components/MoonTicketBanner";
 
 const WeeklyDraw = dynamic(() => import("../components/Moontickets"), {
   ssr: false,
@@ -7,10 +8,8 @@ const WeeklyDraw = dynamic(() => import("../components/Moontickets"), {
 export default function Page() {
   return (
     <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center pt-40 px-4">
-      <div className="text-center mb-8">
-        <h1 className="text-4xl md:text-6xl font-bold tracking-wide">MoonTicket</h1>
-        <p className="mt-2 text-sm md:text-base text-yellow-300">Weekly Prize Drawing</p>
-      </div>
+      <MoonTicketBanner className="mb-2" />
+      <p className="mb-8 text-sm md:text-base text-yellow-300">Weekly Prize Drawing</p>
       <WeeklyDraw />
     </div>
   );
