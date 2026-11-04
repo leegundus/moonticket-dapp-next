@@ -4,15 +4,15 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center justify-start py-10 pt-40 px-4">
       <img
-        src="/moonticket-banner.png"
+        src="/moonticket-logo.png"
         alt="MoonTicket"
-        className="w-72 md:w-[28rem] lg:w-[36rem] mx-auto"
+        className="w-64 md:w-80 mx-auto"
       />
 
       <div className="max-w-3xl text-center mt-8">
         <h1 className="text-3xl md:text-4xl font-bold">One Free Entry. One Winner. Every Week.</h1>
         <p className="text-lg mt-5 leading-relaxed">
-          MoonTicket is a weekly prize drawing on Solana. Connect your Phantom wallet,
+          MoonTicket is a weekly prize drawing on Solana. Connect your Solana wallet,
           claim one free entry, and come back for the Monday night drawing.
         </p>
         <p className="text-lg mt-4 font-semibold">No purchase necessary.</p>
