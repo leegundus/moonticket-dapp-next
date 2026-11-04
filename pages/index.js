@@ -12,7 +12,7 @@ export default function Home() {
       <div className="max-w-3xl text-center mt-8">
         <h1 className="text-3xl md:text-4xl font-bold">One Free Entry. One Winner. Every Week.</h1>
         <p className="text-lg mt-5 leading-relaxed">
-          MoonTicket is a weekly prize drawing on Solana. Connect your Phantom wallet,
+          MoonTicket is a weekly prize drawing on Solana. Connect your Solana wallet,
           claim one free entry, and come back for the Monday night drawing.
         </p>
         <p className="text-lg mt-4 font-semibold">No purchase necessary.</p>
