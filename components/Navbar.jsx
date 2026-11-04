@@ -29,6 +29,7 @@ const Navbar = () => {
         <div className="hidden md:flex space-x-6">
           <Link href="/">Home</Link>
           <Link href="/Moontickets">Weekly Draw</Link>
+          <Link href="/checkin">Daily Check-In</Link>
           <Link href="/buytix">Buy TIX</Link>
           <Link href="/past">Winners</Link>
           <Link href="/whitepaper">How It Works</Link>
@@ -66,6 +67,7 @@ const Navbar = () => {
         <div className="fixed inset-0 top-0 bg-black/90 backdrop-blur-sm text-yellow-400 flex flex-col items-center justify-center space-y-6 z-40 md:hidden pt-32">
           <Link href="/" onClick={() => setIsOpen(false)}>Home</Link>
           <Link href="/Moontickets" onClick={() => setIsOpen(false)}>Weekly Draw</Link>
+          <Link href="/checkin" onClick={() => setIsOpen(false)}>Daily Check-In</Link>
           <Link href="/buytix" onClick={() => setIsOpen(false)}>Buy TIX</Link>
           <Link href="/past" onClick={() => setIsOpen(false)}>Winners</Link>
           <Link href="/whitepaper" onClick={() => setIsOpen(false)}>How It Works</Link>
