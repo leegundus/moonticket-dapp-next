@@ -27,7 +27,11 @@ function readString(bytes, offset) {
 }
 
 function decodeMetadata(bytes) {
-  let offset = 1;
+  let offset = 0;
+  // Metaplex MetadataV1 account discriminator.
+  if (bytes[offset++] !== 4) {
+    throw new Error("The TIX account is not a Metaplex MetadataV1 account.");
+  }
   const updateAuthority = new PublicKey(bytes.slice(offset, offset + 32)).toBase58();
   offset += 32;
   const mint = new PublicKey(bytes.slice(offset, offset + 32)).toBase58();
@@ -38,29 +42,53 @@ function decodeMetadata(bytes) {
   const uri = readString(bytes, offset); offset = uri.offset;
   const sellerFeeBasisPoints = readU16(bytes, offset); offset += 2;
 
-  const creatorsOption = bytes[offset]; offset += 1;
+  const creatorsOption = bytes[offset++];
+  if (creatorsOption !== 0 && creatorsOption !== 1) {
+    throw new Error("Unexpected creators field in TIX metadata.");
+  }
   let creators = null;
-
   if (creatorsOption === 1) {
     const count = readU32(bytes, offset); offset += 4;
+    if (count > 5) throw new Error("Unexpected creator count in TIX metadata.");
     creators = [];
     for (let i = 0; i < count; i += 1) {
       const address = new PublicKey(bytes.slice(offset, offset + 32));
       offset += 32;
-      const verified = bytes[offset] === 1; offset += 1;
-      const share = bytes[offset]; offset += 1;
+      const verified = bytes[offset++] === 1;
+      const share = bytes[offset++];
       creators.push({ address, verified, share });
     }
   }
 
+  const primarySaleHappened = bytes[offset++] === 1;
+  const isMutable = bytes[offset++] === 1;
+  const editionNonceOption = bytes[offset++] ?? 0;
+  if (editionNonceOption === 1) offset += 1;
+  else if (editionNonceOption !== 0) throw new Error("Unexpected edition nonce in metadata.");
+
+  const tokenStandardOption = bytes[offset++] ?? 0;
+  let tokenStandard = null;
+  if (tokenStandardOption === 1) tokenStandard = bytes[offset++];
+  else if (tokenStandardOption !== 0) throw new Error("Unexpected token standard in metadata.");
+
+  const collectionOption = bytes[offset++] ?? 0;
+  if (collectionOption === 1) {
+    // A verified collection must never be silently removed by a metadata URI update.
+    throw new Error("This token has a collection. Metadata update requires a collection-preserving flow.");
+  }
+  if (collectionOption !== 0) throw new Error("Unexpected collection option in metadata.");
+
+  const usesOption = bytes[offset++] ?? 0;
+  if (usesOption === 1) {
+    throw new Error("This token has uses data. Metadata update requires a uses-preserving flow.");
+  }
+  if (usesOption !== 0) throw new Error("Unexpected uses option in metadata.");
+
   return {
-    updateAuthority,
-    mint,
-    name: name.value,
-    symbol: symbol.value,
-    uri: uri.value,
-    sellerFeeBasisPoints,
-    creators,
+    updateAuthority, mint,
+    name: name.value, symbol: symbol.value, uri: uri.value,
+    sellerFeeBasisPoints, creators, primarySaleHappened,
+    isMutable, tokenStandard,
   };
 }
 
@@ -105,22 +133,26 @@ function encodeCreators(creators) {
 }
 
 function updateMetadataInstruction(metadataPda, updateAuthority, current) {
-  // Metaplex UpdateMetadataAccount (legacy-compatible) discriminator = 1.
-  // We update Data only and preserve seller fee + creators.
-  const data = concat([
+  // Metaplex UpdateMetadataAccountV2 (discriminator 15), using DataV2.
+  // Only name, symbol and URI change. Preserve existing seller fee and creators.
+  // Null collection/uses are guarded by the metadata decoder above.
+  const dataV2 = concat([
     borshString(TARGET_NAME),
     borshString(TARGET_SYMBOL),
     borshString(TARGET_URI),
     u16(current.sellerFeeBasisPoints),
     encodeCreators(current.creators),
+    new Uint8Array([0]), // DataV2.collection = None
+    new Uint8Array([0]), // DataV2.uses = None
   ]);
 
   const instructionData = concat([
-    new Uint8Array([1]), // UpdateMetadataAccount
-    new Uint8Array([1]), // data: Some(Data)
-    data,
-    new Uint8Array([0]), // updateAuthority: None (preserve)
-    new Uint8Array([0]), // primarySaleHappened: None (preserve)
+    new Uint8Array([15]), // UpdateMetadataAccountV2
+    new Uint8Array([1]),  // data: Some(DataV2)
+    dataV2,
+    new Uint8Array([0]),  // new update authority: None (preserve)
+    new Uint8Array([0]),  // primary sale happened: None (preserve)
+    new Uint8Array([0]),  // is mutable: None (preserve)
   ]);
 
   return new TransactionInstruction({
@@ -141,6 +173,9 @@ export default function TixMetadataAdmin() {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState("");
+  const [preflightStatus, setPreflightStatus] = useState("");
+  const [preflightLogs, setPreflightLogs] = useState("");
+  const [txSignature, setTxSignature] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -152,8 +187,11 @@ export default function TixMetadataAdmin() {
       );
       const account = await connection.getAccountInfo(pda, "confirmed");
       if (!account?.data) throw new Error("No Metaplex metadata account was found for TIX.");
+      if (!account.owner.equals(METADATA_PROGRAM)) throw new Error("Unexpected metadata program owner.");
+      const decoded = decodeMetadata(new Uint8Array(account.data));
+      if (decoded.mint !== TIX_MINT.toBase58()) throw new Error("Token mint does not match TIX.");
       setMetadataPda(pda);
-      setCurrent(decodeMetadata(new Uint8Array(account.data)));
+      setCurrent(decoded);
     } catch (err) {
       setCurrent(null);
       setMessage(err?.message || "Could not read TIX metadata.");
@@ -178,32 +216,94 @@ export default function TixMetadataAdmin() {
   }), []);
 
   async function updateMetadata() {
-    if (!publicKey || !metadataPda || !current) return;
+    if (!publicKey || !metadataPda || !current || working || alreadyUpdated) return;
     if (!isAuthority) {
       setMessage("Connect the wallet shown as the on-chain update authority.");
+      return;
+    }
+    if (!current.isMutable || current.mint !== TIX_MINT.toBase58()) {
+      setMessage("Update refused: incorrect or immutable token metadata.");
       return;
     }
 
     setWorking(true);
     setMessage("");
+    setPreflightLogs("");
+    setPreflightStatus("checking");
+    setTxSignature("");
+
     try {
-      const ix = updateMetadataInstruction(metadataPda, publicKey, current);
-      const tx = new Transaction().add(ix);
+      // Reload the authority, mint and mutable flag immediately before signing.
+      const account = await connection.getAccountInfo(metadataPda, "confirmed");
+      if (!account?.data || !account.owner.equals(METADATA_PROGRAM)) {
+        throw new Error("TIX metadata account could not be verified.");
+      }
+      const fresh = decodeMetadata(new Uint8Array(account.data));
+      if (fresh.mint !== TIX_MINT.toBase58() || !fresh.isMutable) {
+        throw new Error("The TIX metadata account is no longer mutable or is for a different mint.");
+      }
+      if (fresh.updateAuthority !== publicKey.toBase58()) {
+        throw new Error("The connected wallet is no longer the update authority.");
+      }
+      if (fresh.name === TARGET_NAME && fresh.symbol === TARGET_SYMBOL && fresh.uri === TARGET_URI) {
+        setCurrent(fresh);
+        setMessage("TIX metadata already matches the target. No transaction needed.");
+        setPreflightStatus("not needed");
+        return;
+      }
+
+      const tx = new Transaction().add(updateMetadataInstruction(metadataPda, publicKey, fresh));
       tx.feePayer = publicKey;
       const latest = await connection.getLatestBlockhash("confirmed");
       tx.recentBlockhash = latest.blockhash;
 
-      const signature = await sendTransaction(tx, connection, { skipPreflight: false });
-      setMessage("Transaction submitted: " + signature);
-      await connection.confirmTransaction(
+      // An unsigned, read-only simulation is required before any wallet approval.
+      // Never offer an "unsafe continue" override for failed simulations.
+      const simulation = await connection.simulateTransaction(tx, {
+        sigVerify: false,
+        replaceRecentBlockhash: true,
+        commitment: "confirmed",
+      });
+      setPreflightLogs((simulation.value?.logs || []).join("\n"));
+      if (!simulation.value || simulation.value.err) {
+        setPreflightStatus("failed");
+        throw new Error(
+          "On-chain preflight failed: " +
+          JSON.stringify(simulation.value?.err ?? "No simulation result") +
+          ". No wallet signature was requested."
+        );
+      }
+      setPreflightStatus("passed");
+      setMessage("Simulation passed. Review the wallet request carefully before signing.");
+
+      const signature = await sendTransaction(tx, connection, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+      setTxSignature(signature);
+      setMessage("Transaction submitted. Waiting for Solana confirmation…");
+
+      const confirmed = await connection.confirmTransaction(
         { signature, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
         "confirmed"
       );
-      setMessage("TIX metadata updated successfully. Transaction: " + signature);
-      await load();
+      if (confirmed.value?.err) {
+        throw new Error("On-chain transaction failed: " + JSON.stringify(confirmed.value.err));
+      }
+
+      const updatedAccount = await connection.getAccountInfo(metadataPda, "confirmed");
+      if (!updatedAccount?.data) throw new Error("Confirmed, but could not re-read TIX metadata.");
+      const updated = decodeMetadata(new Uint8Array(updatedAccount.data));
+      setCurrent(updated);
+      const matches = updated.name === TARGET_NAME && updated.symbol === TARGET_SYMBOL &&
+        updated.uri === TARGET_URI;
+      if (!matches) {
+        throw new Error("Transaction confirmed, but the on-chain metadata still does not match. Review the transaction before retrying.");
+      }
+      setMessage("Confirmed on Solana: TIX metadata matches the new MoonTicket name, symbol and URI.");
     } catch (err) {
       console.error("TIX metadata update failed:", err);
-      setMessage(err?.message || "The metadata update transaction failed.");
+      setMessage(err?.message || "TIX metadata update failed. Do not bypass wallet warnings.");
     } finally {
       setWorking(false);
     }
@@ -231,6 +331,8 @@ export default function TixMetadataAdmin() {
                 <p className="break-all"><strong>Update authority:</strong> {current.updateAuthority}</p>
                 <p><strong>Seller fee:</strong> {current.sellerFeeBasisPoints} bps</p>
                 <p><strong>Creators:</strong> {current.creators ? current.creators.length : 0}</p>
+                <p><strong>Mutable:</strong> {current.isMutable ? "Yes" : "No"}</p>
+                <p><strong>Token standard:</strong> {current.tokenStandard ?? "Not set"}</p>
               </div>
             </section>
 
@@ -260,17 +362,41 @@ export default function TixMetadataAdmin() {
               ) : (
                 <button
                   onClick={updateMetadata}
-                  disabled={!isAuthority || working}
+                  disabled={!isAuthority || working || !current.isMutable}
                   className="mt-5 bg-yellow-400 text-black font-bold rounded-lg px-6 py-3 disabled:opacity-40"
                 >
-                  {working ? "Updating…" : "Update TIX Metadata"}
+                  {working ? "Checking and updating…" : "Simulate & Update TIX Metadata"}
                 </button>
               )}
             </section>
           </>
         ) : null}
 
-        {message && <p className="mt-6 break-all">{message}</p>}
+        {preflightStatus && (
+          <p className="mt-6 text-sm">
+            <strong>Preflight:</strong> {preflightStatus}
+          </p>
+        )}
+        {message && <p role="status" className="mt-3 break-all">{message}</p>}
+        {txSignature && (
+          <p className="mt-3 break-all text-sm">
+            <a className="underline" href={`https://solscan.io/tx/${txSignature}`}
+              target="_blank" rel="noopener noreferrer">
+              View on-chain transaction on Solscan
+            </a>
+          </p>
+        )}
+        {preflightLogs && (
+          <details className="mt-4 rounded border border-yellow-400/30 p-3">
+            <summary className="cursor-pointer text-sm">Solana simulation logs</summary>
+            <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-all text-xs">{preflightLogs}</pre>
+          </details>
+        )}
+        <p className="mt-6 text-sm text-yellow-100/80">
+          Only approve a metadata-only transaction that you understand.
+          If Phantom warns that the request is unsafe, cancel it and inspect the simulation logs.
+          Never approve an unsafe transaction just to update the token description.
+        </p>
 
         <div className="mt-8">
           <button onClick={load} disabled={loading || working}
