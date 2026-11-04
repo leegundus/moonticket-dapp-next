@@ -1,14 +1,12 @@
 import Script from "next/script";
 import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 
 const TIX_MINT = "8e9Mqnczw7MHjdjYaRe3tppbXgRdT6bqTyR3n8b4C4Ek";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
 export default function BuyTix() {
   const wallet = useWallet();
-  const { setVisible } = useWalletModal();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,7 +24,7 @@ export default function BuyTix() {
         },
         enableWalletPassthrough: true,
         passthroughWalletContextState: wallet,
-        onRequestConnectWallet: () => setVisible(true),
+        onRequestConnectWallet: () => window.dispatchEvent(new Event("moonticket:connect-wallet")),
         defaultExplorer: "Solscan",
         onSwapError: ({ error: swapError }) => {
           console.error("Jupiter swap error:", swapError);
@@ -64,8 +62,16 @@ export default function BuyTix() {
       <main className="max-w-3xl mx-auto">
         <h1 className="text-3xl md:text-4xl font-bold text-center">Buy TIX</h1>
         <p className="text-center mt-4 max-w-2xl mx-auto leading-relaxed">
-          Swap SOL or another supported Solana token for TIX through Jupiter. MoonTicket does not
-          sell TIX directly and buying TIX does not increase your weekly drawing odds.
+          TIX is MoonTicket&apos;s token on the Solana blockchain. TIX may be included
+          in weekly prize bundles alongside SOL, NFTs, and other crypto assets.
+          Buying or holding TIX is optional and does not increase drawing odds.
+        </p>
+        <p className="text-center mt-3 max-w-2xl mx-auto leading-relaxed">
+          Swap SOL or another supported Solana token for TIX through Jupiter, subject
+          to available liquidity and network fees. MoonTicket does not sell TIX directly.
+        </p>
+        <p className="mt-3 text-center text-sm">
+          <a href="/whitepaper" className="underline">Learn about MoonTicket and TIX</a>
         </p>
 
         <div className="mt-8 border border-yellow-400/30 rounded-xl p-3 bg-black">
