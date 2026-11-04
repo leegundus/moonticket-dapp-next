@@ -128,8 +128,8 @@ export default function WalletConnect() {
             </div>
 
             <p className="mt-3 text-sm text-yellow-100">
-              Choose your wallet to open MoonTicket inside its secure mobile browser.
-              Then tap Connect Wallet again to approve the connection.
+              Choose your wallet to open MoonTicket inside its in-app browser.
+              Then tap Connect Wallet again and approve the wallet connection.
             </p>
 
             <div className="mt-5 flex flex-col gap-3">
@@ -157,8 +157,7 @@ export default function WalletConnect() {
 
             <p className="mt-4 text-xs leading-relaxed text-yellow-100/80">
               If your wallet does not open, launch its app and enter
-              www.moonticket.io in its built-in browser. Connecting does
-              not require signing a transaction or sending funds.
+              www.moonticket.io in its built-in browser. Connecting does not require transferring funds. Only approve requests you recognize.
             </p>
           </section>
         </div>
