@@ -11,7 +11,7 @@ const endpoint = process.env.NEXT_PUBLIC_RPC_URL;
 const dynamicWalletProvider = (component) => {
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={[]} autoConnect>
+      <WalletProvider wallets={[]} autoConnect={false}>
         <WalletModalProvider>
           {component}
         </WalletModalProvider>
