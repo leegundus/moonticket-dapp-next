@@ -36,11 +36,12 @@ function currentPublicPage() {
 }
 
 export default function WalletConnect() {
-  const { connected, wallets } = useWallet();
+  const { connected, connecting, disconnect, select, wallets } = useWallet();
   const { setVisible } = useWalletModal();
   const [isMobile, setIsMobile] = useState(false);
   const [mobilePromptOpen, setMobilePromptOpen] = useState(false);
   const [pageUrl, setPageUrl] = useState("https://www.moonticket.io/");
+  const [connectTimedOut, setConnectTimedOut] = useState(false);
 
   useEffect(() => {
     setIsMobile(isMobileDevice());
@@ -79,7 +80,22 @@ export default function WalletConnect() {
 
   useEffect(() => {
     if (connected || !needsMobileHandoff) setMobilePromptOpen(false);
+    if (connected) setConnectTimedOut(false);
   }, [connected, needsMobileHandoff]);
+
+  // Never leave the UI stuck on "Connecting…" forever. If a wallet does not
+  // answer, reset Wallet Adapter so the user can choose/retry cleanly.
+  useEffect(() => {
+    if (!connecting) return undefined;
+
+    const timer = window.setTimeout(async () => {
+      try { await disconnect(); } catch {}
+      try { select(null); } catch {}
+      setConnectTimedOut(true);
+    }, 12000);
+
+    return () => window.clearTimeout(timer);
+  }, [connecting, disconnect, select]);
 
   const origin = (() => {
     try { return new URL(pageUrl).origin; }
@@ -98,6 +114,17 @@ export default function WalletConnect() {
             className="rounded bg-yellow-400 px-3 py-2 text-xs font-semibold text-black hover:bg-yellow-300 sm:px-4 sm:text-sm"
           >
             Connect Wallet
+          </button>
+        ) : connectTimedOut && !connected ? (
+          <button
+            type="button"
+            onClick={() => {
+              setConnectTimedOut(false);
+              setVisible(true);
+            }}
+            className="rounded bg-yellow-400 px-3 py-2 text-xs font-semibold text-black hover:bg-yellow-300 sm:px-4 sm:text-sm"
+          >
+            Retry Wallet
           </button>
         ) : (
           <WalletMultiButton className="!bg-yellow-400 !text-black !font-semibold !px-3 sm:!px-4 !py-2 !rounded hover:!bg-yellow-300 transition" />
