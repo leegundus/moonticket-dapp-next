@@ -4,9 +4,9 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-black text-yellow-400 flex flex-col items-center justify-start py-10 pt-40 px-4">
       <img
-        src="/moonticket-banner.png"
+        src="/moonticket-logo.png"
         alt="MoonTicket"
-        className="w-72 md:w-[28rem] lg:w-[36rem] mx-auto"
+        className="w-64 md:w-80 mx-auto"
       />
 
       <div className="max-w-3xl text-center mt-8">
