@@ -53,3 +53,16 @@ a {
   }
 }
 */
+
+/* Keep the embedded Jupiter swap inside the page stacking context so its
+   sticky/fixed internals cannot paint over MoonTicket's fixed navigation. */
+#jupiter-plugin-shell {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+
+#jupiter-plugin {
+  position: relative;
+  z-index: 0;
+}
