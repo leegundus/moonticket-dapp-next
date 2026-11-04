@@ -1,10 +1,46 @@
+import Link from "next/link";
+
+const TIX_MINT = "8e9Mqnczw7MHjdjYaRe3tppbXgRdT6bqTyR3n8b4C4Ek";
+
 export default function DrawingDetails() {
   return (
-    <div className="bg-black text-yellow-400 min-h-screen p-8 pt-40">
+    <div className="bg-black text-yellow-400 min-h-screen p-5 sm:p-8 pt-40">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold text-center mb-10">How the Weekly Drawing Works</h1>
+        <h1 className="text-3xl font-bold text-center mb-10">About MoonTicket &amp; TIX</h1>
 
         <section className="space-y-4 text-lg">
+          <h2 className="text-2xl font-semibold">What Is MoonTicket?</h2>
+          <p>
+            MoonTicket is a Solana-based weekly prize drawing platform. Eligible participants
+            can claim one free entry per weekly drawing, and one winner is selected each week.
+            Prizes may include TIX, SOL, NFTs, or other clearly identified crypto assets.
+          </p>
+        </section>
+
+        <section className="space-y-4 text-lg mt-10">
+          <h2 className="text-2xl font-semibold">What Is TIX?</h2>
+          <p>
+            TIX is MoonTicket&apos;s token on the Solana blockchain. It can be traded through
+            supported Solana exchanges when liquidity is available and may be included in
+            MoonTicket weekly prize bundles alongside SOL, NFTs, and other crypto assets.
+          </p>
+          <p>
+            TIX is not required to enter or win a drawing. Buying, owning, or holding TIX
+            does not provide extra entries or better winning odds. Token prices can fluctuate
+            and trading may involve fees and liquidity risks.
+          </p>
+          <p className="text-sm break-all">
+            <strong>TIX mint address:</strong> {TIX_MINT}
+          </p>
+          <div className="flex flex-wrap gap-4 text-base">
+            <Link href="/buytix" className="underline font-semibold">Buy TIX through Jupiter</Link>
+            <a href={`https://solscan.io/token/${TIX_MINT}`} target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+              View TIX on Solscan
+            </a>
+          </div>
+        </section>
+
+        <section className="space-y-4 text-lg mt-10">
           <h2 className="text-2xl font-semibold">Free Weekly Entry</h2>
           <p>
             Eligible participants can claim one free entry for each weekly MoonTicket drawing.
