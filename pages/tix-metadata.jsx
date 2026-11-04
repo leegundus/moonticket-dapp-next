@@ -232,6 +232,7 @@ export default function TixMetadataAdmin() {
     setPreflightStatus("checking");
     setTxSignature("");
 
+    let simulationPassed = false;
     try {
       // Reload the authority, mint and mutable flag immediately before signing.
       const account = await connection.getAccountInfo(metadataPda, "confirmed");
@@ -259,11 +260,14 @@ export default function TixMetadataAdmin() {
 
       // An unsigned, read-only simulation is required before any wallet approval.
       // Never offer an "unsafe continue" override for failed simulations.
-      const simulation = await connection.simulateTransaction(tx, {
-        sigVerify: false,
-        replaceRecentBlockhash: true,
-        commitment: "confirmed",
-      });
+      // web3.js v1 has two simulateTransaction overloads:
+      // (legacy Transaction, optional Signer[]), or
+      // (VersionedTransaction, optional SimulateTransactionConfig).
+      // Passing an RPC config object as the second argument for a legacy
+      // Transaction throws "Invalid arguments" before hitting Solana RPC.
+      // This legacy overload runs an unsigned simulation when no signers
+      // are supplied; the transaction's recent blockhash is already set.
+      const simulation = await connection.simulateTransaction(tx);
       setPreflightLogs((simulation.value?.logs || []).join("\n"));
       if (!simulation.value || simulation.value.err) {
         setPreflightStatus("failed");
@@ -273,6 +277,7 @@ export default function TixMetadataAdmin() {
           ". No wallet signature was requested."
         );
       }
+      simulationPassed = true;
       setPreflightStatus("passed");
       setMessage("Simulation passed. Review the wallet request carefully before signing.");
 
@@ -303,6 +308,7 @@ export default function TixMetadataAdmin() {
       setMessage("Confirmed on Solana: TIX metadata matches the new MoonTicket name, symbol and URI.");
     } catch (err) {
       console.error("TIX metadata update failed:", err);
+      if (!simulationPassed) setPreflightStatus("failed");
       setMessage(err?.message || "TIX metadata update failed. Do not bypass wallet warnings.");
     } finally {
       setWorking(false);
