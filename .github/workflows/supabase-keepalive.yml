@@ -1,0 +1,44 @@
+name: Supabase Keepalive
+
+on:
+  schedule:
+    # Four lightweight DB-backed requests per day. Supabase says a few user
+    # database requests per day is typically enough to avoid Free-plan pausing.
+    - cron: "17 0,6,12,18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: true
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ping MoonTicket DB-backed endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          URL="https://www.moonticket.io/api/checkinStatus?wallet=11111111111111111111111111111111"
+
+          for attempt in 1 2 3; do
+            echo "Keepalive attempt $attempt"
+            if body="$(curl               --fail               --silent               --show-error               --max-time 20               --header 'Cache-Control: no-cache'               "$URL")"; then
+              echo "$body"
+              echo "MoonTicket Supabase keepalive succeeded."
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              sleep 15
+            fi
+          done
+
+          echo "MoonTicket Supabase keepalive failed after 3 attempts."
+          exit 1
